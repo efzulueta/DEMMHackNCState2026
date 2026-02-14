@@ -8,6 +8,7 @@ import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load SynthID detector
 from analyzers.synthid_detector import SynthIDDetector
