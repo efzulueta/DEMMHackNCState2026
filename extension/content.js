@@ -96,6 +96,34 @@ function getSellerAgeYears() {
   }
 }
 
+function getListingCreatedDate() {
+  try {
+    // Find any node that contains "Listed on ..."
+    const el = Array.from(document.querySelectorAll("span,div,p,li,a"))
+      .find(n => /listed\s+on/i.test((n.textContent || "")));
+
+    if (!el) return null;
+
+    const txt = (el.textContent || "").trim();
+    const m = txt.match(/listed\s+on\s+(.+)/i);
+    if (!m) return null;
+
+    // Remove any trailing stuff like "1296 favorites"
+    const dateStr = m[1].split("•")[0].trim();
+
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+}
+
+function daysSince(date) {
+  if (!date) return null;
+  const diffMs = Date.now() - date.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
 function extractFromDom() {
   // Title
   const titleEl = firstMatch([
@@ -128,7 +156,12 @@ function extractFromDom() {
     .find(n => /sales/i.test(n.textContent) && /\d/.test(n.textContent) && n.textContent.length < 40);
   const salesCount = parseNumber(salesEl?.textContent || null);
 
+  // Seller age often appears as "X years on Etsy" or "X years on Etsy"
   const sellerAge = getSellerAgeYears();
+
+  // Listing age often appears as "Listed on <date>"
+  const listedDate = getListingCreatedDate();
+  const listingAgeDays = daysSince(listedDate);
 
   // Review snippets on listing page can be limited; still grab visible review blocks
   const reviewBlocks = Array.from(document.querySelectorAll('[data-review-region], [data-region="reviews"], section'))
@@ -138,7 +171,7 @@ function extractFromDom() {
   // This can be noisy; we’ll keep first ~20 unique short texts
   const reviewTexts = Array.from(new Set(reviewBlocks.map(n => n.textContent.trim()))).slice(0, 20);
 
-  return { title, images, sellerName, salesCount, sellerAge, reviewTexts };
+  return { title, images, sellerName, salesCount, sellerAge, listingAgeDays, reviewTexts };
 }
 
 // --- simple sentiment (hackathon-friendly) ---
