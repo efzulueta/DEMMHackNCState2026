@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Load your SynthID detector (the only one ready)
+# Load SynthID detector
 from analyzers.synthid_detector import SynthIDDetector
 
 load_dotenv()
@@ -35,7 +35,7 @@ def analyze():
     """
     try:
         data = request.json
-        logger.info(f"📥 Analyzing: {data.get('url', 'unknown')}")
+        logger.info(f" Analyzing: {data.get('url', 'unknown')}")
         
         # Get images from scraper
         images = data.get('data', {}).get('images', [])
