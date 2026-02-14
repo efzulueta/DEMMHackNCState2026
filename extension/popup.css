@@ -1,0 +1,8 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; }
+.wrap { padding: 12px; width: 320px; }
+h1 { font-size: 16px; margin: 0 0 10px; }
+button { width: 100%; padding: 10px; cursor: pointer; }
+.muted { color: #666; margin: 8px 0; font-size: 12px; }
+.score { margin: 10px 0; font-weight: 700; }
+ul { margin: 8px 0 0 18px; padding: 0; }
+pre { max-height: 200px; overflow: auto; background: #f6f6f6; padding: 8px; }

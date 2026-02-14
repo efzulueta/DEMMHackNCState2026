@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Listing Inspector",
+  "version": "0.1.0",
+  "description": "Extract listing images, seller stats, reviews, and generate a trust report.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.etsy.com/*"],
+  "action": {
+    "default_title": "Listing Inspector",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.etsy.com/listing/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
