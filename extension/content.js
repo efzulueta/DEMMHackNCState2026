@@ -52,6 +52,50 @@ function extractFromJsonLd() {
   };
 }
 
+function getSellerAgeYears() {
+  try {
+    const wrapper =
+      document.querySelector('[data-appears-component-name="lp_seller_cred_tenure"]') ||
+      document.querySelector('[data-appears-component-name*="seller_cred_tenure"]');
+
+    if (wrapper) {
+      // 1) Try attribute first
+      const eventData = wrapper.getAttribute("data-appears-event-data");
+      if (eventData) {
+        try {
+          const obj = JSON.parse(eventData);
+          const tenureStr = String(obj.tenure || "");
+          if (/month/i.test(tenureStr)) return 0;            // <-- months => 0 years
+          const yrs = parseNumber(tenureStr);
+          if (yrs != null) return yrs;
+        } catch { }
+      }
+
+      // 2) Fallback: visible text
+      const txt = String(wrapper.textContent || "");
+      if (/month/i.test(txt)) return 0;                     // <-- months => 0 years
+      const yrs = parseNumber(txt);
+      if (yrs != null) return yrs;
+    }
+
+    // 3) Fallback scan
+    const ageEl = Array.from(document.querySelectorAll("span,div,a,p,li,button"))
+      .find(n => /(years?\s+on\s+etsy|months?\s+on\s+etsy|on\s+etsy\s+since|since\s+\d{4}|opened\s+in\s+\d{4})/i
+        .test((n.textContent || "")));
+
+    if (ageEl) {
+      const t = String(ageEl.textContent || "");
+      if (/month/i.test(t)) return 0;                       // <-- months => 0 years
+      return parseNumber(t);
+    }
+
+    return null;
+  } catch (e) {
+    console.warn("[EXT] getSellerAgeYears failed:", e);
+    return null;
+  }
+}
+
 function extractFromDom() {
   // Title
   const titleEl = firstMatch([
@@ -84,10 +128,7 @@ function extractFromDom() {
     .find(n => /sales/i.test(n.textContent) && /\d/.test(n.textContent) && n.textContent.length < 40);
   const salesCount = parseNumber(salesEl?.textContent || null);
 
-  // "On Etsy since <year>" sometimes present on shop card / about section
-  const sinceEl = Array.from(document.querySelectorAll("span,div"))
-    .find(n => /on etsy since/i.test(n.textContent));
-  const sinceYear = sinceEl ? parseNumber(sinceEl.textContent) : null;
+  const sellerAge = getSellerAgeYears();
 
   // Review snippets on listing page can be limited; still grab visible review blocks
   const reviewBlocks = Array.from(document.querySelectorAll('[data-review-region], [data-region="reviews"], section'))
@@ -97,7 +138,7 @@ function extractFromDom() {
   // This can be noisy; we’ll keep first ~20 unique short texts
   const reviewTexts = Array.from(new Set(reviewBlocks.map(n => n.textContent.trim()))).slice(0, 20);
 
-  return { title, images, sellerName, salesCount, sinceYear, reviewTexts };
+  return { title, images, sellerName, salesCount, sellerAge, reviewTexts };
 }
 
 // --- simple sentiment (hackathon-friendly) ---
@@ -179,12 +220,10 @@ function computeRisk(data) {
   let risk = 0;
 
   // Seller age
-  const year = data.sinceYear;
-  if (year) {
-    const ageYears = (new Date()).getFullYear() - year;
-    data.shopAgeYears = ageYears;
-    if (ageYears < 1) { signals.push("Shop appears very new (< 1 year)."); risk += 15; }
-    else if (ageYears < 2) { signals.push("Shop is relatively new (< 2 years)."); risk += 8; }
+  const age = data.sellerAge;
+  if (age) {
+    if (age < 1) { signals.push("Shop appears very new (< 1 year)."); risk += 15; }
+    else if (age < 2) { signals.push("Shop is relatively new (< 2 years)."); risk += 8; }
   }
 
   // Sales
