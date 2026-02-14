@@ -256,7 +256,7 @@ async function readBodySnippet(resp, max = 200) {
     return "";
   }
 }
-
+//comments
 async function fetchAllReviewsViaApi({ listing_id, shop_id, sort_option = "Relevancy", throttleMs = 250 }) {
   const url = "https://www.etsy.com/api/v3/ajax/bespoke/member/neu/specs/deep_dive_reviews";
   const csrf = getCsrfToken();
