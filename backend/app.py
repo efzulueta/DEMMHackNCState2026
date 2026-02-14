@@ -36,10 +36,11 @@ def analyze():
     """
     try:
         data = request.json
-        logger.info(f" Analyzing: {data.get('url', 'unknown')}")
+        logger.info(f"Analyzing: {data.get('url', 'unknown')}")
         
         # Get images from scraper
         images = data.get('data', {}).get('images', [])
+        logger.info(f"Images received: {len(images)}")
         
         # Run SynthID detection
         synthid_results = {
@@ -48,12 +49,23 @@ def analyze():
         }
         
         if images and synthid:
-            # Analyze first image (or all if you want)
+            # Analyze first image
+            logger.info(f"Analyzing image: {images[0][:50]}...")
             result = synthid.analyze_image(images[0])
+            
+            logger.info(f"Analysis complete - AI detected: {result.get('is_ai_generated', False)}")
+            logger.info(f"Confidence: {result.get('confidence', 0)}%")
+            
             synthid_results['results'] = [result]
             synthid_results['any_ai'] = result.get('is_ai_generated', False)
+        else:
+            logger.warning("No images to analyze or detector not ready")
         
-        # Placeholder results for other analyzers
+        # Calculate risk
+        risk = calculate_risk(synthid_results)
+        logger.info(f"Risk level: {risk['level']}")
+        
+        # Response for extension
         response = {
             'success': True,
             'url': data.get('url'),
@@ -66,13 +78,11 @@ def analyze():
             },
             'results': {
                 'synthid': synthid_results,
-                'image_comparator': {'status': 'coming_soon'},
-                'duplicate_detector': {'status': 'coming_soon'},
-                'shop_analyzer': {'status': 'coming_soon'}
             },
-            'risk_assessment': calculate_risk(synthid_results)
+            'risk': risk
         }
         
+        logger.info(f"Response sent successfully")
         return jsonify(response)
         
     except Exception as e:
@@ -106,20 +116,19 @@ def status():
     })
 
 if __name__ == '__main__':
-    from datetime import datetime
     port = int(os.getenv('PORT', 5000))
     
     print("\n" + "="*50)
     print("SynthID DETECTOR API RUNNING")
     print("="*50)
     print(f"Port: {port}")
-    print(f"API Key: {'' if synthid.api_key else '❌'}")
+    print(f"API Key: {'Loaded' if synthid.api_key else 'Missing'}")
     print("\nANALYZER STATUS:")
-    print(f"   SynthID:         READY")
-    print(f"   Image Compare:   Waiting for teammate")
-    print(f"   Duplicate:       Waiting for teammate")
-    print(f"   Shop:            Waiting for teammate")
-    print("\n Endpoints:")
+    print(f"   SynthID:        READY")
+    print(f"   Image Compare:  Waiting")
+    print(f"   Duplicate:      Waiting")
+    print(f"   Shop:           Waiting")
+    print("\nEndpoints:")
     print(f"   POST /analyze")
     print(f"   GET  /status")
     print("="*50 + "\n")
