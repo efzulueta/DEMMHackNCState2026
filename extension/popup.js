@@ -1,7 +1,367 @@
-// popup.js — FINAL FIXED VERSION
-console.log("[Listing Inspector] popup.js loaded - FINAL FIXED VERSION");
+// // popup.js — vFINAL-2026-02-14-01
+// console.log("[Listing Inspector] popup.js loaded vFINAL-2026-02-14-01");
 
-const BACKEND_URL = 'http://localhost:5000/analyze';
+// async function getActiveTab() {
+//   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+//   return tab;
+// }
+
+// function el(id) { return document.getElementById(id); }
+
+// function render(resp) {
+//   console.log("[Listing Inspector] render() resp =", resp);
+
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   if (statusEl) statusEl.textContent = "Done.";
+
+//   const risk = resp?.report?.risk ?? 0;
+//   const sigs = resp?.report?.signals ?? [];
+
+//   if (scoreEl) scoreEl.textContent = `Risk Score: ${risk}/100`;
+
+//   if (signalsEl) {
+//     signalsEl.innerHTML = "";
+//     const ul = document.createElement("ul");
+//     for (const s of sigs) {
+//       const li = document.createElement("li");
+//       li.textContent = s;
+//       ul.appendChild(li);
+//     }
+//     signalsEl.appendChild(ul);
+//   }
+
+//   if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+// }
+
+// async function runScan() {
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   if (statusEl) statusEl.textContent = "Scanning…";
+//   if (scoreEl) scoreEl.textContent = "";
+//   if (signalsEl) signalsEl.innerHTML = "";
+//   if (rawEl) rawEl.textContent = "";
+
+//   const tab = await getActiveTab();
+//   if (!tab?.id) {
+//     if (statusEl) statusEl.textContent = "No active tab found.";
+//     return;
+//   }
+
+//   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, (resp) => {
+//     if (chrome.runtime.lastError) {
+//       const msg = chrome.runtime.lastError.message || "Unknown error";
+//       if (statusEl) statusEl.textContent = "Error: " + msg;
+//       if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
+//       return;
+//     }
+
+//     // if content.js returned nothing / wrong shape
+//     if (!resp || typeof resp !== "object") {
+//       if (statusEl) statusEl.textContent = "No/invalid response from content script.";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     if (resp.ok !== true) {
+//       if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     render(resp);
+//   });
+// }
+
+// document.addEventListener("DOMContentLoaded", () => {
+//   const btn = el("scan");
+//   if (!btn) return;
+//   btn.addEventListener("click", runScan);
+// });
+
+// popup.js — BACKEND-CALLER v1
+// console.log("[Listing Inspector] popup.js loaded - BACKEND CALLER VERSION");
+
+// async function getActiveTab() {
+//   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+//   return tab;
+// }
+
+// function el(id) { return document.getElementById(id); }
+
+// function render(resp) {
+//   console.log("[Listing Inspector] render() resp =", resp);
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   if (statusEl) statusEl.textContent = "Done.";
+//   const risk = resp?.report?.risk ?? 0;
+//   const sigs = resp?.report?.signals ?? [];
+//   if (scoreEl) scoreEl.textContent = `Risk Score: ${risk}/100`;
+
+//   if (signalsEl) {
+//     signalsEl.innerHTML = "";
+//     const ul = document.createElement("ul");
+//     for (const s of sigs) {
+//       const li = document.createElement("li");
+//       li.textContent = s;
+//       ul.appendChild(li);
+//     }
+//     signalsEl.appendChild(ul);
+//   }
+
+//   if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+// }
+
+// async function runScan() {
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   console.log("🔵 [POPUP] Button clicked!");
+
+//   if (statusEl) statusEl.textContent = "Scanning…";
+//   if (scoreEl) scoreEl.textContent = "";
+//   if (signalsEl) signalsEl.innerHTML = "";
+//   if (rawEl) rawEl.textContent = "";
+
+//   const tab = await getActiveTab();
+//   if (!tab?.id) {
+//     console.log("🔴 [POPUP] No active tab");
+//     if (statusEl) statusEl.textContent = "No active tab found.";
+//     return;
+//   }
+
+//   console.log("🔵 [POPUP] Sending message to content script...");
+
+//   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
+//     if (chrome.runtime.lastError) {
+//       const msg = chrome.runtime.lastError.message || "Unknown error";
+//       console.log("🔴 [POPUP] Content script error:", msg);
+//       if (statusEl) statusEl.textContent = "Error: " + msg;
+//       if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
+//       return;
+//     }
+
+//     console.log("🟢 [POPUP] Received from content script:", resp);
+
+//     if (!resp || typeof resp !== "object") {
+//       console.log("🔴 [POPUP] Invalid response");
+//       if (statusEl) statusEl.textContent = "No/invalid response from content script.";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     if (resp.ok !== true) {
+//       console.log("🔴 [POPUP] Scan failed");
+//       if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     // =====================================================================
+//     // THIS IS THE PART THAT WAS MISSING - SEND TO BACKEND!
+//     // =====================================================================
+//     console.log("🟡 [POPUP] Sending to backend...");
+//     if (statusEl) statusEl.textContent = "Sending to backend...";
+
+//     try {
+//       console.log("🟡 [POPUP] Calling fetch...");
+      
+//       const backendResponse = await fetch('http://localhost:5000/analyze', {
+//         method: 'POST',
+//         headers: {
+//           'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify(resp)
+//       });
+
+//       console.log("🟡 [POPUP] Backend responded with status:", backendResponse.status);
+
+//       if (backendResponse.ok) {
+//         const backendData = await backendResponse.json();
+//         console.log("🟢 [POPUP] Backend success:", backendData);
+//         if (statusEl) statusEl.textContent = "Backend received data!";
+//       } else {
+//         const errorText = await backendResponse.text();
+//         console.log("🔴 [POPUP] Backend error:", errorText);
+//         if (statusEl) statusEl.textContent = "Backend error: " + backendResponse.status;
+//       }
+//     } catch (err) {
+//       console.log("🔴 [POPUP] Fetch failed:", err);
+//       if (statusEl) statusEl.textContent = "Cannot reach backend: " + err.message;
+//     }
+
+//     render(resp);
+//   });
+// }
+
+// document.addEventListener("DOMContentLoaded", () => {
+//   console.log("🟢 [POPUP] DOM loaded");
+//   const btn = el("scan");
+//   if (!btn) {
+//     console.log("🔴 [POPUP] Button not found!");
+//     return;
+//   }
+//   console.log("🟢 [POPUP] Button found, adding listener");
+//   btn.addEventListener("click", runScan);
+// });
+
+
+// popup.js — BACKEND-CALLER v1
+// console.log("[Listing Inspector] popup.js loaded - BACKEND CALLER VERSION");
+
+// async function getActiveTab() {
+//   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+//   return tab;
+// }
+
+// function el(id) { return document.getElementById(id); }
+
+// function render(resp) {
+//   console.log("[Listing Inspector] render() resp =", resp);
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   if (statusEl) statusEl.textContent = "Done.";
+//   const risk = resp?.report?.risk ?? 0;
+//   const sigs = resp?.report?.signals ?? [];
+//   if (scoreEl) scoreEl.textContent = `Risk Score: ${risk}/100`;
+
+//   if (signalsEl) {
+//     signalsEl.innerHTML = "";
+//     const ul = document.createElement("ul");
+//     for (const s of sigs) {
+//       const li = document.createElement("li");
+//       li.textContent = s;
+//       ul.appendChild(li);
+//     }
+//     signalsEl.appendChild(ul);
+//   }
+
+//   if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+// }
+
+// async function runScan() {
+//   const statusEl = el("status");
+//   const scoreEl = el("score");
+//   const signalsEl = el("signals");
+//   const rawEl = el("raw");
+
+//   console.log("🔵 [POPUP] Button clicked!");
+
+//   if (statusEl) statusEl.textContent = "Scanning…";
+//   if (scoreEl) scoreEl.textContent = "";
+//   if (signalsEl) signalsEl.innerHTML = "";
+//   if (rawEl) rawEl.textContent = "";
+
+//   const tab = await getActiveTab();
+//   if (!tab?.id) {
+//     console.log("🔴 [POPUP] No active tab");
+//     if (statusEl) statusEl.textContent = "No active tab found.";
+//     return;
+//   }
+
+//   console.log("🔵 [POPUP] Sending message to content script...");
+
+//   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
+//     if (chrome.runtime.lastError) {
+//       const msg = chrome.runtime.lastError.message || "Unknown error";
+//       console.log("🔴 [POPUP] Content script error:", msg);
+//       if (statusEl) statusEl.textContent = "Error: " + msg;
+//       if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
+//       return;
+//     }
+
+//     console.log("🟢 [POPUP] Received from content script:", resp);
+    
+//     // Log review images for debugging
+//     if (resp?.data?.reviews) {
+//       const reviewsWithImages = resp.data.reviews.filter(r => r.images && r.images.length > 0);
+//       console.log(`📸 [POPUP] Reviews with images: ${reviewsWithImages.length}/${resp.data.reviews.length}`);
+//       reviewsWithImages.slice(0, 3).forEach((review, i) => {
+//         console.log(`  Review ${i+1}: ${review.images.length} images`);
+//         review.images.forEach((img, j) => {
+//           console.log(`    Image ${j+1}: ${img.substring(0, 80)}...`);
+//         });
+//       });
+//     }
+
+//     if (!resp || typeof resp !== "object") {
+//       console.log("🔴 [POPUP] Invalid response");
+//       if (statusEl) statusEl.textContent = "No/invalid response from content script.";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     if (resp.ok !== true) {
+//       console.log("🔴 [POPUP] Scan failed");
+//       if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
+//       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+//       return;
+//     }
+
+//     // =====================================================================
+//     // THIS IS THE PART THAT WAS MISSING - SEND TO BACKEND!
+//     // =====================================================================
+//     console.log("🟡 [POPUP] Sending to backend...");
+//     if (statusEl) statusEl.textContent = "Sending to backend...";
+
+//     try {
+//       console.log("🟡 [POPUP] Calling fetch...");
+      
+//       const backendResponse = await fetch('http://localhost:5000/analyze', {
+//         method: 'POST',
+//         headers: {
+//           'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify(resp)
+//       });
+
+//       console.log("🟡 [POPUP] Backend responded with status:", backendResponse.status);
+
+//       if (backendResponse.ok) {
+//         const backendData = await backendResponse.json();
+//         console.log("🟢 [POPUP] Backend success:", backendData);
+//         if (statusEl) statusEl.textContent = "Backend received data!";
+//       } else {
+//         const errorText = await backendResponse.text();
+//         console.log("🔴 [POPUP] Backend error:", errorText);
+//         if (statusEl) statusEl.textContent = "Backend error: " + backendResponse.status;
+//       }
+//     } catch (err) {
+//       console.log("🔴 [POPUP] Fetch failed:", err);
+//       if (statusEl) statusEl.textContent = "Cannot reach backend: " + err.message;
+//     }
+
+//     render(resp);
+//   });
+// }
+
+// document.addEventListener("DOMContentLoaded", () => {
+//   console.log("🟢 [POPUP] DOM loaded");
+//   const btn = el("scan");
+//   if (!btn) {
+//     console.log("🔴 [POPUP] Button not found!");
+//     return;
+//   }
+//   console.log("🟢 [POPUP] Button found, adding listener");
+//   btn.addEventListener("click", runScan);
+// });
+
+
+console.log("[Listing Inspector] popup.js loaded - BACKEND CALLER VERSION");
 
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -10,184 +370,170 @@ async function getActiveTab() {
 
 function el(id) { return document.getElementById(id); }
 
-function render(resp, backendResult) {
-  console.log("[Listing Inspector] render() called", { 
-    content: resp, 
-    backend: backendResult,
-    fullBackend: JSON.stringify(backendResult, null, 2)
-  });
-
+function render(resp) {
+  console.log("[Listing Inspector] render() resp =", resp);
   const statusEl = el("status");
   const scoreEl = el("score");
   const signalsEl = el("signals");
   const rawEl = el("raw");
 
   if (statusEl) statusEl.textContent = "Done.";
-
   const risk = resp?.report?.risk ?? 0;
   const sigs = resp?.report?.signals ?? [];
+  if (scoreEl) scoreEl.textContent = `Risk Score: ${risk}/100`;
 
-  let html = '';
-
-  // DEBUG: Log what we're getting from backend
-  console.log("[Listing Inspector] Backend results structure:", {
-    hasResults: !!backendResult?.results,
-    hasSynthid: !!backendResult?.results?.synthid,
-    synthidData: backendResult?.results?.synthid
-  });
-
-  // Add AI results if they exist - CORRECTED PATH
-  if (backendResult?.success && backendResult?.results?.synthid) {
-    const aiData = backendResult.results.synthid;
-    const isAIDetected = aiData.is_ai_generated || false;
-    const confidence = aiData.confidence || 0;
-    const explanation = aiData.explanation || '';
-    const indicators = aiData.indicators || [];
+  if (signalsEl) {
+    signalsEl.innerHTML = "";
+    const ul = document.createElement("ul");
     
-    console.log("[Listing Inspector] AI Data:", { isAIDetected, confidence, indicators });
-    
-    let indicatorsHtml = '';
-    if (indicators.length > 0) {
-      indicatorsHtml = '<ul style="margin: 5px 0 0 15px; font-size: 11px;">';
-      indicators.forEach(ind => {
-        indicatorsHtml += `<li style="margin: 2px 0;">${ind}</li>`;
-      });
-      indicatorsHtml += '</ul>';
+    // Add signals from frontend analysis
+    for (const s of sigs) {
+      const li = document.createElement("li");
+      li.textContent = s;
+      ul.appendChild(li);
     }
     
-    html += `
-      <div style="margin: 10px 0 15px 0; padding: 12px; border-radius: 6px; background: ${isAIDetected ? '#ffebee' : '#e8f5e8'}; border-left: 4px solid ${isAIDetected ? '#f44336' : '#4caf50'};">
-        <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px;">🤖 AI IMAGE DETECTION</div>
-        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">
-          ${isAIDetected ? '⚠️ AI-GENERATED IMAGE DETECTED!' : '✅ Real Image'}
-        </div>
-        <div style="font-size: 13px; margin-bottom: 5px;">
-          Confidence: <strong>${confidence}%</strong>
-        </div>
-        ${indicatorsHtml}
-        ${explanation ? `
-          <div style="margin-top: 8px; font-size: 11px; background: rgba(255,255,255,0.7); padding: 6px; border-radius: 4px;">
-            <strong>Analysis:</strong> ${explanation}
-          </div>
-        ` : ''}
-      </div>
-      <hr style="margin: 10px 0;">
-    `;
-  }
-
-  // Add seller risk score
-  html += `<div style="margin: 10px 0 5px 0;"><strong>Seller Risk Score:</strong> ${risk}/100</div>`;
-
-  // Add seller signals
-  if (sigs.length > 0) {
-    html += '<ul style="margin: 5px 0 0 20px;">';
-    sigs.forEach(s => html += `<li style="margin: 3px 0; font-size: 12px;">${s}</li>`);
-    html += '</ul>';
-  } else {
-    html += '<div style="color: #666; font-style: italic; font-size: 12px; margin-top: 5px;">No seller signals detected</div>';
-  }
-
-  if (signalsEl) signalsEl.innerHTML = html;
-  if (scoreEl) scoreEl.innerHTML = ''; // Already included in html
-  if (rawEl) rawEl.textContent = JSON.stringify({content: resp, backend: backendResult}, null, 2);
-}
-
-async function openReviewWindow(tabId) {
-  console.log("[Listing Inspector] Opening review window...");
-  
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { type: "OPEN_REVIEWS" }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.log("[Listing Inspector] Review open error:", chrome.runtime.lastError.message);
-        resolve(false);
-      } else {
-        console.log("[Listing Inspector] Review open result:", response);
-        resolve(true);
+    // Add sentiment analysis results if available
+    if (resp?.aiAnalysis?.sentiment) {
+      const sentiment = resp.aiAnalysis.sentiment;
+      
+      console.log("📊 [POPUP] Sentiment data:", sentiment);
+      
+      // Add sentiment breakdown
+      const sentimentLi = document.createElement("li");
+      sentimentLi.innerHTML = `<strong>📊 Sentiment Analysis:</strong><br>
+        &nbsp;&nbsp;Positive: ${sentiment.sentiment_counts?.positive || 0} (${sentiment.sentiment_percentages?.positive || 0}%)<br>
+        &nbsp;&nbsp;Negative: ${sentiment.sentiment_counts?.negative || 0} (${sentiment.sentiment_percentages?.negative || 0}%)<br>
+        &nbsp;&nbsp;Neutral: ${sentiment.sentiment_counts?.neutral || 0} (${sentiment.sentiment_percentages?.neutral || 0}%)<br>
+        &nbsp;&nbsp;Average: ${sentiment.average_sentiment || 0}`;
+      ul.appendChild(sentimentLi);
+      
+      // Add suspicious reviews warning if any
+      if (sentiment.sentiment_rating_mismatch_count > 0) {
+        const suspiciousLi = document.createElement("li");
+        suspiciousLi.innerHTML = `<strong style="color: #d94f1a;">⚠️ ${sentiment.sentiment_rating_mismatch_count} suspicious review(s) detected</strong>`;
+        ul.appendChild(suspiciousLi);
+        
+        // Log suspicious reviews for debugging
+        console.log("🚩 [POPUP] Suspicious reviews:", sentiment.suspicious_reviews);
       }
-    });
-  });
+    }
+    
+    signalsEl.appendChild(ul);
+  }
+
+  if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
 }
 
 async function runScan() {
-  console.log("[Listing Inspector] Scan started");
-  
   const statusEl = el("status");
   const scoreEl = el("score");
   const signalsEl = el("signals");
   const rawEl = el("raw");
 
-  if (statusEl) statusEl.textContent = "Scanning page...";
+  console.log("🔵 [POPUP] Button clicked!");
+
+  if (statusEl) statusEl.textContent = "Scanning…";
   if (scoreEl) scoreEl.textContent = "";
-  if (signalsEl) signalsEl.innerHTML = '<div style="color: #666;">Loading...</div>';
+  if (signalsEl) signalsEl.innerHTML = "";
   if (rawEl) rawEl.textContent = "";
 
   const tab = await getActiveTab();
   if (!tab?.id) {
+    console.log("🔴 [POPUP] No active tab");
     if (statusEl) statusEl.textContent = "No active tab found.";
     return;
   }
 
-  // Get data from content.js
+  console.log("🔵 [POPUP] Sending message to content script...");
+
   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
     if (chrome.runtime.lastError) {
       const msg = chrome.runtime.lastError.message || "Unknown error";
+      console.log("🔴 [POPUP] Content script error:", msg);
       if (statusEl) statusEl.textContent = "Error: " + msg;
       if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
       return;
     }
 
-    if (!resp || typeof resp !== "object" || resp.ok !== true) {
-      if (statusEl) statusEl.textContent = "Could not scan page.";
+    console.log("🟢 [POPUP] Received from content script:", resp);
+    
+    // Log review images for debugging
+    if (resp?.data?.reviews) {
+      const reviewsWithImages = resp.data.reviews.filter(r => r.images && r.images.length > 0);
+      console.log(`📸 [POPUP] Reviews with images: ${reviewsWithImages.length}/${resp.data.reviews.length}`);
+      reviewsWithImages.slice(0, 3).forEach((review, i) => {
+        console.log(`  Review ${i+1}: ${review.images.length} images`);
+        review.images.forEach((img, j) => {
+          console.log(`    Image ${j+1}: ${img.substring(0, 80)}...`);
+        });
+      });
+    }
+
+    if (!resp || typeof resp !== "object") {
+      console.log("🔴 [POPUP] Invalid response");
+      if (statusEl) statusEl.textContent = "No/invalid response from content script.";
       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
       return;
     }
 
-    console.log("[Listing Inspector] Got page data with", resp.data?.images?.length, "images");
-    
-    if (statusEl) statusEl.textContent = "Analyzing images with AI...";
-    
-    // Call your backend
-    try {
-      const response = await fetch(BACKEND_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: resp.url,
-          data: resp.data,
-          report: resp.report
-        })
-      });
-      
-      console.log("[Listing Inspector] Backend response status:", response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const backendResult = await response.json();
-      console.log("[Listing Inspector] AI Result:", backendResult);
-      
-      // Show results
-      if (statusEl) statusEl.textContent = "Complete!";
-      render(resp, backendResult);
-      
-    } catch (error) {
-      console.error("[Listing Inspector] Backend error:", error);
-      if (statusEl) statusEl.textContent = "AI detection failed";
-      render(resp, null);
+    if (resp.ok !== true) {
+      console.log("🔴 [POPUP] Scan failed");
+      if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
+      if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
+      return;
     }
-    
-    // Wait a moment then open review window
-    setTimeout(() => {
-      console.log("[Listing Inspector] Attempting to open reviews...");
-      openReviewWindow(tab.id);
-    }, 1000);
+
+    // =====================================================================
+    // THIS IS THE PART THAT WAS MISSING - SEND TO BACKEND!
+    // =====================================================================
+    console.log("🟡 [POPUP] Sending to backend...");
+    if (statusEl) statusEl.textContent = "Sending to backend...";
+
+    try {
+      console.log("🟡 [POPUP] Calling fetch...");
+      
+      const backendResponse = await fetch('http://localhost:5000/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(resp)
+      });
+
+      console.log("🟡 [POPUP] Backend responded with status:", backendResponse.status);
+
+      if (backendResponse.ok) {
+        const backendData = await backendResponse.json();
+        console.log("🟢 [POPUP] Backend success:", backendData);
+        
+        // Store backend analysis results
+        resp.aiAnalysis = backendData.results;
+        resp.aiRisk = backendData.risk;
+        resp.analyzersStatus = backendData.analyzers_status;
+        
+        if (statusEl) statusEl.textContent = "Backend received data!";
+      } else {
+        const errorText = await backendResponse.text();
+        console.log("🔴 [POPUP] Backend error:", errorText);
+        if (statusEl) statusEl.textContent = "Backend error: " + backendResponse.status;
+      }
+    } catch (err) {
+      console.log("🔴 [POPUP] Fetch failed:", err);
+      if (statusEl) statusEl.textContent = "Cannot reach backend: " + err.message;
+    }
+
+    render(resp);
   });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("[Listing Inspector] DOM ready");
+  console.log("🟢 [POPUP] DOM loaded");
   const btn = el("scan");
-  if (!btn) return;
+  if (!btn) {
+    console.log("🔴 [POPUP] Button not found!");
+    return;
+  }
+  console.log("🟢 [POPUP] Button found, adding listener");
   btn.addEventListener("click", runScan);
 });
