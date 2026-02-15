@@ -31,6 +31,12 @@ function parseCompactNumber(str) {
   return Math.round(num);
 }
 
+function parseNumber(str) {
+  if (!str) return null;
+  const m = String(str).match(/\d+/);
+  return m ? Number(m[0]) : null;
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function waitFor(getterFn, { timeoutMs = 8000, intervalMs = 200 } = {}) {
@@ -98,7 +104,7 @@ function getSellerAgeYears() {
         try {
           const obj = JSON.parse(eventData);
           const tenureStr = String(obj.tenure || "");
-          if (/month/i.test(tenureStr)) return 0;            // <-- months => 0 years
+          if (/month/i.test(tenureStr)) return 0;
           const yrs = parseNumber(tenureStr);
           if (yrs != null) return yrs;
         } catch { }
@@ -106,7 +112,7 @@ function getSellerAgeYears() {
 
       // 2) Fallback: visible text
       const txt = String(wrapper.textContent || "");
-      if (/month/i.test(txt)) return 0;                     // <-- months => 0 years
+      if (/month/i.test(txt)) return 0;
       const yrs = parseNumber(txt);
       if (yrs != null) return yrs;
     }
@@ -118,7 +124,7 @@ function getSellerAgeYears() {
 
     if (ageEl) {
       const t = String(ageEl.textContent || "");
-      if (/month/i.test(t)) return 0;                       // <-- months => 0 years
+      if (/month/i.test(t)) return 0;
       return parseNumber(t);
     }
 
@@ -160,11 +166,7 @@ function extractFromDom() {
     .find(n => /listed on/i.test(n.textContent || ""));
   const listedText = listedEl ? normalizeSpaces(listedEl.textContent) : null;
 
-  return { title, images, sellerName, salesCount, sinceYear, listedText };
-  // This can be noisy; we’ll keep first ~20 unique short texts
-  const reviewTexts = Array.from(new Set(reviewBlocks.map(n => n.textContent.trim()))).slice(0, 20);
-
-  return { title, images, sellerName, salesCount, sellerAge, reviewTexts };
+  return { title, images, sellerName, salesCount, sinceYear, listedText, sellerAge };
 }
 
 /* ---------------------------
@@ -179,12 +181,9 @@ function getListingIdFromUrl() {
 }
 
 function findShopIdOnPage() {
-  // A) Best: find in any inline JSON snippets visible in the DOM (Etsy embeds many specs)
-  // Scan the FULL textContent of a limited set of nodes that are likely to contain it.
-  // This is faster and more reliable than innerHTML slicing.
   const likelyNodes = [
     ...document.querySelectorAll('script[type="application/json"], script:not([src]), [data-page-data], [data-appears-component]'),
-  ].slice(0, 250); // cap to avoid huge work
+  ].slice(0, 250);
 
   for (const n of likelyNodes) {
     const t = n.textContent;
@@ -197,13 +196,10 @@ function findShopIdOnPage() {
     if (m) return Number(m[1]);
   }
 
-  // B) Next: scan all script tags (no 2MB cutoff; but bail early per script)
   const scripts = Array.from(document.querySelectorAll("script"));
   for (const s of scripts) {
     const t = s.textContent;
     if (!t) continue;
-
-    // quick reject: if it doesn't even contain shop_id substring, skip
     if (!t.includes("shop_id")) continue;
 
     let m = t.match(/"shop_id"\s*:\s*(\d{4,})/);
@@ -213,14 +209,12 @@ function findShopIdOnPage() {
     if (m) return Number(m[1]);
   }
 
-  // C) Fallback: look for JSON-looking blobs in body text (your earlier output had it there)
   const bodyText = document.body?.innerText || "";
   if (bodyText.includes("shop_id")) {
     const m = bodyText.match(/"shop_id"\s*:\s*(\d{4,})/);
     if (m) return Number(m[1]);
   }
 
-  // D) Fallback: sometimes it exists as a data attribute
   const attrEl =
     document.querySelector("[data-shop-id]") ||
     document.querySelector("[data-shopid]") ||
@@ -237,13 +231,11 @@ function findShopIdOnPage() {
 }
 
 function getCsrfToken() {
-  // Meta tags (common)
   const meta = document.querySelector(
     'meta[name="csrf-token"], meta[name="csrf_token"], meta[name="etsy-csrf-token"]'
   );
   if (meta?.content) return meta.content;
 
-  // Cookie fallback (names vary)
   const m = document.cookie.match(/(?:^|;\s*)(csrf_token|csrfToken|etsy_csrf_token)=([^;]+)/i);
   return m ? decodeURIComponent(m[2]) : null;
 }
@@ -256,7 +248,7 @@ async function readBodySnippet(resp, max = 200) {
     return "";
   }
 }
-//comments
+
 async function fetchAllReviewsViaApi({ listing_id, shop_id, sort_option = "Relevancy", throttleMs = 250 }) {
   const url = "https://www.etsy.com/api/v3/ajax/bespoke/member/neu/specs/deep_dive_reviews";
   const csrf = getCsrfToken();
@@ -361,7 +353,6 @@ async function fetchAllReviewsViaApi({ listing_id, shop_id, sort_option = "Relev
 }
 
 function findViewAllReviewsControl(root = document) {
-  // Most reliable: attribute you already found
   const direct = root.querySelector('[data-view-all-reviews-button]');
   if (direct) return direct;
 
@@ -385,38 +376,60 @@ function findViewAllReviewsControl(root = document) {
 
 function parseReviewsFromContainer(container) {
   const reviews = [];
-  const reviewEls = Array.from(container.querySelectorAll('.review-card, [data-review-region]'));
+  const reviewEls = Array.from(container.querySelectorAll('.review-card[data-review-region]'));
 
-  console.log(`[DEBUG] Found ${reviewEls.length} review cards`);
+  console.log(`[DEBUG] Found ${reviewEls.length} review cards in container`);
 
   for (const el of reviewEls) {
-    const textWrapper = el.querySelector('[data-review-text-toggle-wrapper] p, .wt-text-body');
-    const reviewText = textWrapper ? normalizeSpaces(textWrapper.textContent) : '';
-    if (!reviewText || reviewText.length < 5) continue;
+    // Get review text from the specific structure
+    const textWrapper = el.querySelector('[data-review-text-toggle-wrapper]');
+    if (!textWrapper) {
+      console.log('[DEBUG] No text wrapper found, skipping');
+      continue;
+    }
+    
+    const textPara = textWrapper.querySelector('p[id*="review-preview-toggle"]');
+    const reviewText = textPara ? normalizeSpaces(textPara.textContent) : '';
+    
+    if (!reviewText || reviewText.length < 5) {
+      console.log('[DEBUG] No valid review text, skipping');
+      continue;
+    }
 
-    const ratingEl = el.querySelector('[data-rating], [aria-label*="out of 5 stars"]');
+    // Rating from screen-reader text
+    const ratingEl = el.querySelector('.wt-screen-reader-only');
     let rating = '';
     if (ratingEl) {
-      const ariaLabel = ratingEl.getAttribute('aria-label') || '';
-      const match = ariaLabel.match(/(\d+)\s+out of/);
+      const match = ratingEl.textContent.match(/(\d+)\s+out of/);
       rating = match ? match[1] : '';
     }
 
-    const fullText = normalizeSpaces(el.textContent);
-    const dateMatch = fullText.match(DATE_RE);
-    const date = dateMatch ? dateMatch[0] : null;
+    // Date - look in the link area
+    const dateContainer = el.querySelector('p.wt-text-body-small');
+    const date = dateContainer ? (() => {
+      const match = dateContainer.textContent.match(DATE_RE);
+      return match ? match[0] : null;
+    })() : null;
 
+    // Reviewer name from the link
+    const reviewerLink = el.querySelector('a[data-review-username]');
+    const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
+
+    // Check for video/images
     const hasVideo = el.querySelector('video, [class*="video"]') !== null;
+    const hasPhoto = el.querySelector('img[src*="etsystatic.com/iusa/"]') !== null;
 
     reviews.push({
       text: reviewText.slice(0, 500),
       rating: rating,
       date,
-      hasVideo
+      reviewer,
+      hasVideo,
+      hasPhoto
     });
   }
 
-  console.log(`[DEBUG] Extracted ${reviews.length} reviews`);
+  console.log(`[DEBUG] Successfully extracted ${reviews.length} reviews`);
   return reviews;
 }
 
@@ -450,31 +463,46 @@ async function expandAndScrapeReviews() {
     }
   }
 
+  // Click the button
+  console.log('[DEBUG] Clicking view all reviews button');
   ctl.click();
 
-  const modal = await waitFor(
-    () => document.querySelector('[role="dialog"], [aria-modal="true"], .wt-modal, [data-review-modal]'),
-    { timeoutMs: 8000 }
-  );
+  // Wait for content to load - try multiple strategies
+  await sleep(1000);
 
-  if (modal) {
-    await sleep(700);
-    const reviews = parseReviewsFromContainer(modal);
-    return { reviews, mode: "clicked_modal" };
-  }
-
+  // Check for expanded inline section first
   const expanded = await waitFor(() => {
-    const h2 = Array.from(document.querySelectorAll("h2,h3,h4"))
-      .find(x => /reviews for this item/i.test(x.textContent || ""));
-    return h2?.closest("section") || h2?.closest("div") || null;
+    const container = document.querySelector('[data-reviews-container]');
+    if (!container) return null;
+    
+    // Make sure reviews are actually loaded
+    const reviewCards = container.querySelectorAll('.review-card[data-review-region]');
+    console.log(`[DEBUG] Found ${reviewCards.length} review cards after click`);
+    
+    return reviewCards.length > 0 ? container : null;
   }, { timeoutMs: 8000 });
 
   if (expanded) {
+    console.log('[DEBUG] Found expanded inline reviews');
     await sleep(500);
     const reviews = parseReviewsFromContainer(expanded);
     return { reviews, mode: "clicked_inline" };
   }
 
+  // Check for modal
+  const modal = await waitFor(
+    () => document.querySelector('[role="dialog"], [aria-modal="true"], .wt-modal, [data-review-modal]'),
+    { timeoutMs: 2000 }
+  );
+
+  if (modal) {
+    console.log('[DEBUG] Found modal with reviews');
+    await sleep(700);
+    const reviews = parseReviewsFromContainer(modal);
+    return { reviews, mode: "clicked_modal" };
+  }
+
+  console.log('[DEBUG] Could not find reviews after clicking');
   return { reviews: [], mode: "clicked_but_not_found" };
 }
 
@@ -484,23 +512,30 @@ async function getReviewsBestEffort() {
 
   console.log("[Listing Inspector] IDs:", { listing_id, shop_id });
 
+  let apiError = null;
+
+  // Try API first if we have IDs
   if (listing_id && shop_id) {
     try {
       const reviews = await fetchAllReviewsViaApi({ listing_id, shop_id });
       return { reviews, mode: "api_deep_dive_reviews", url: null, debug: { listing_id, shop_id } };
     } catch (e) {
-      // IMPORTANT: return the failure so your response shows it
-      return {
-        reviews: [],
-        mode: "api_failed_fallback_dom",
-        url: null,
-        debug: { listing_id, shop_id, apiError: String(e) }
-      };
+      console.log("[Listing Inspector] API failed, falling back to DOM:", e);
+      apiError = String(e);
+      // Don't return here - continue to DOM scraper below
     }
   }
 
+  // Fallback to DOM scraper
   const r = await expandAndScrapeReviews();
-  return { ...r, debug: { listing_id, shop_id } };
+  return { 
+    ...r, 
+    debug: { 
+      listing_id, 
+      shop_id, 
+      ...(apiError ? { apiError } : {})
+    } 
+  };
 }
 
 /* ---------------------------
@@ -512,7 +547,7 @@ function computeRiskReport(data) {
 
   // Seller age
   const age = data.sellerAge;
-  if (age) {
+  if (age !== null && age !== undefined) {
     if (age < 1) { signals.push("Shop appears very new (< 1 year)."); risk += 15; }
     else if (age < 2) { signals.push("Shop is relatively new (< 2 years)."); risk += 8; }
   }
@@ -559,9 +594,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       merged.reviews = reviews;
 
-      // API path uses appreciationPhotoUrl, DOM path uses hasVideo — keep both signals
+      // API path uses appreciationPhotoUrl, DOM path uses hasPhoto
       merged.anyReviewHasVideo = reviews.some(r => r.hasVideo) || false;
-      merged.anyReviewHasPhoto = reviews.some(r => !!r.appreciationPhotoUrl);
+      merged.anyReviewHasPhoto = reviews.some(r => !!r.appreciationPhotoUrl || !!r.hasPhoto);
 
       const { risk, signals } = computeRiskReport(merged);
 
