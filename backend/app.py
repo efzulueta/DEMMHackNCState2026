@@ -24,9 +24,9 @@ CORS(app)  # Allow extension to call you
 # Initialize ONLY the detectors that are ready
 try:
     synthid = SynthIDDetector()
-    logger.info("SynthID detector initialized successfully")
+    logger.info("✅ SynthID detector initialized successfully")
 except Exception as e:
-    logger.error(f"Failed to initialize SynthID detector: {e}")
+    logger.error(f"❌ Failed to initialize SynthID detector: {e}")
     synthid = None
 
 # Placeholders for future analyzers
@@ -47,10 +47,10 @@ def analyze():
     try:
         data = request.json
         if not data:
-            logger.error("No JSON data received")
+            logger.error("❌ No JSON data received")
             return jsonify({'success': False, 'error': 'No data received'}), 400
             
-        logger.info(f"Analyzing: {data.get('url', 'unknown')}")
+        logger.info(f"📥 Analyzing: {data.get('url', 'unknown')}")
         
         # Get images from scraper - handle different possible structures
         images = []
@@ -59,65 +59,80 @@ def analyze():
         elif 'images' in data:
             images = data.get('images', [])
             
-        logger.info(f"Images received: {len(images)}")
+        logger.info(f"🖼️ Raw images received: {len(images)}")
         
-        # Log the first few image URLs for debugging
-        for i, img in enumerate(images[:3]):
+        # Better image URL validation
+        valid_images = []
+        for i, img in enumerate(images):
             if img and isinstance(img, str):
-                logger.info(f"Image {i+1}: {img[:100]}...")
+                if img.startswith(('http://', 'https://')):
+                    valid_images.append(img)
+                    logger.info(f"  ✅ Valid image {i+1}: {img[:100]}...")
+                else:
+                    logger.warning(f"  ❌ Image {i+1} missing http:// or https://: {img[:100]}")
+            else:
+                logger.warning(f"  ❌ Image {i+1} invalid type: {type(img)} - {img}")
+        
+        logger.info(f"📊 Valid images: {len(valid_images)} out of {len(images)}")
         
         # Run SynthID detection
         synthid_results = {
             'status': 'working',
             'results': [],
             'any_ai': False,
-            'message': 'No images analyzed'
+            'message': 'No valid images to analyze',
+            'images_analyzed': 0,
+            'total_images': len(images),
+            'valid_images': len(valid_images)
         }
         
-        if images and synthid and len(images) > 0:
-            # Analyze first image (or all if you want)
-            first_image = images[0]
+        if valid_images and synthid:
+            # Analyze first valid image
+            first_image = valid_images[0]
+            img_preview = first_image[:50] if len(first_image) > 50 else first_image
+            logger.info(f"🔍 Analyzing image: {img_preview}...")
             
-            if first_image and isinstance(first_image, str):
-                # Safely log the image URL
-                img_preview = first_image[:50] if len(first_image) > 50 else first_image
-                logger.info(f"Analyzing image: {img_preview}...")
+            try:
+                result = synthid.analyze_image(first_image)
                 
-                try:
-                    result = synthid.analyze_image(first_image)
+                if result:
+                    ai_detected = result.get('is_ai_generated', False)
+                    confidence = result.get('confidence', 0)
                     
-                    if result:
-                        logger.info(f"Analysis complete - AI detected: {result.get('is_ai_generated', False)}")
-                        logger.info(f"Confidence: {result.get('confidence', 0)}%")
-                        
-                        synthid_results['results'] = [result]
-                        synthid_results['any_ai'] = result.get('is_ai_generated', False)
-                        synthid_results['message'] = 'Analysis complete'
-                    else:
-                        logger.error("No result returned from analyzer")
-                        synthid_results['message'] = 'Analyzer returned no result'
-                        
-                except Exception as e:
-                    logger.error(f"Error during image analysis: {e}")
-                    logger.error(traceback.format_exc())
-                    synthid_results['message'] = f'Error during analysis: {str(e)}'
-            else:
-                logger.warning("First image URL is invalid")
-                synthid_results['message'] = 'Invalid image URL'
+                    logger.info(f"  ✅ Analysis complete - AI detected: {ai_detected}")
+                    logger.info(f"  📊 Confidence: {confidence}%")
+                    logger.info(f"  📝 Explanation: {result.get('explanation', 'No explanation')[:100]}...")
+                    
+                    if result.get('indicators'):
+                        logger.info(f"  🚩 Indicators: {result.get('indicators')}")
+                    
+                    synthid_results['results'] = [result]
+                    synthid_results['any_ai'] = ai_detected
+                    synthid_results['message'] = 'Analysis complete'
+                    synthid_results['images_analyzed'] = 1
+                else:
+                    logger.error("  ❌ No result returned from analyzer")
+                    synthid_results['message'] = 'Analyzer returned no result'
+                    
+            except Exception as e:
+                logger.error(f"  ❌ Error during image analysis: {e}")
+                logger.error(traceback.format_exc())
+                synthid_results['message'] = f'Error during analysis: {str(e)}'
         else:
-            if not images:
-                logger.warning("No images to analyze")
-                synthid_results['message'] = 'No images provided'
-            elif not synthid:
-                logger.warning("SynthID detector not initialized")
-                synthid_results['message'] = 'Detector not ready'
+            if not valid_images:
+                logger.warning("⚠️ No valid images to analyze")
+                if images:
+                    logger.info(f"  Raw images data sample: {str(images[:3])[:200]}")
+            if not synthid:
+                logger.warning("⚠️ SynthID detector not initialized")
         
         # Calculate risk based on SynthID results
         if synthid_results.get('any_ai'):
+            confidence = synthid_results.get("results", [{}])[0].get("confidence", 0)
             risk = {
                 'score': 75,
                 'level': 'HIGH',
-                'message': 'AI-generated images detected'
+                'message': f'AI-generated images detected ({confidence}% confidence)'
             }
         else:
             risk = {
@@ -126,7 +141,7 @@ def analyze():
                 'message': 'No AI images detected'
             }
         
-        logger.info(f"Risk level: {risk['level']}")
+        logger.info(f"📊 Final Risk level: {risk['level']} - {risk['message']}")
         
         # Response for extension
         response = {
@@ -134,10 +149,10 @@ def analyze():
             'url': data.get('url', 'unknown'),
             'timestamp': datetime.now().isoformat(),
             'analyzers_status': {
-                'synthid': 'READY' if synthid else 'ERROR',
-                'image_comparator': 'IN PROGRESS',
-                'duplicate_detector': 'IN PROGRESS',
-                'shop_analyzer': 'IN PROGRESS'
+                'synthid': '✅ READY' if synthid else '❌ ERROR',
+                'image_comparator': '⏳ IN PROGRESS',
+                'duplicate_detector': '⏳ IN PROGRESS',
+                'shop_analyzer': '⏳ IN PROGRESS'
             },
             'results': {
                 'synthid': synthid_results,
@@ -145,11 +160,11 @@ def analyze():
             'risk': risk
         }
         
-        logger.info(f"Response sent successfully")
+        logger.info(f"✅ Response sent successfully")
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"Error in analyze endpoint: {e}")
+        logger.error(f"❌ Error in analyze endpoint: {e}")
         logger.error(traceback.format_exc())
         return jsonify({
             'success': False, 
@@ -184,41 +199,26 @@ def health():
         'synthid_ready': synthid is not None
     })
 
-def calculate_risk(synthid_results):
-    """Simple risk based only on SynthID for now"""
-    if synthid_results.get('any_ai'):
-        return {
-            'score': 75,
-            'level': 'HIGH',
-            'message': 'AI-generated images detected'
-        }
-    else:
-        return {
-            'score': 25,
-            'level': 'LOW',
-            'message': 'No AI images detected'
-        }
-
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     print("🚀 SYnthID DETECTOR API RUNNING")
-    print("="*60)
+    print("="*70)
     print(f"📡 Port: {port}")
     print(f"🔑 API Key: {'✅ Loaded' if synthid and hasattr(synthid, 'api_key') and synthid.api_key else '❌ Missing'}")
     print(f"🤖 SynthID: {'✅ Ready' if synthid else '❌ Not loaded'}")
     print("\n📊 ANALYZER STATUS:")
     print(f"   SynthID:        {'✅ READY' if synthid else '❌ ERROR'}")
-    print(f"   Image Compare:  ⏳ Waiting")
-    print(f"   Duplicate:      ⏳ Waiting")
-    print(f"   Shop:           ⏳ Waiting")
+    print(f"   Image Compare:  ⏳ Waiting for teammate")
+    print(f"   Duplicate:      ⏳ Waiting for teammate")
+    print(f"   Shop:           ⏳ Waiting for teammate")
     print("\n📬 Endpoints:")
     print(f"   POST http://localhost:{port}/analyze")
     print(f"   GET  http://localhost:{port}/status")
     print(f"   GET  http://localhost:{port}/health")
     print("\n🎯 Test with curl:")
     print(f'   curl -X POST http://localhost:{port}/analyze -H "Content-Type: application/json" -d "{{\\"url\\":\\"test\\",\\"data\\":{{\\"images\\":[\\"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400\\"]}}}}"')
-    print("="*60 + "\n")
+    print("="*70 + "\n")
     
     app.run(host='0.0.0.0', port=port, debug=True)
