@@ -61,17 +61,48 @@ def analyze():
             
         logger.info(f"🖼️ Raw images received: {len(images)}")
         
-        # Better image URL validation
+        # =====================================================================
+        # FIXED: Better image URL validation - handles both strings AND objects
+        # =====================================================================
         valid_images = []
         for i, img in enumerate(images):
-            if img and isinstance(img, str):
+            if img and isinstance(img, dict):
+                # It's an image object - try to extract URL from common fields
+                url = None
+                
+                # Try different possible field names where URL might be stored
+                if 'contentURL' in img and img['contentURL']:
+                    url = img['contentURL']
+                elif 'url' in img and img['url']:
+                    url = img['url']
+                elif 'src' in img and img['src']:
+                    url = img['src']
+                elif 'thumbnail' in img and img['thumbnail']:
+                    url = img['thumbnail']
+                elif 'image' in img and isinstance(img['image'], str):
+                    url = img['image']
+                
+                if url and isinstance(url, str):
+                    # Clean up the URL if needed
+                    url = url.strip()
+                    if url.startswith(('http://', 'https://')):
+                        valid_images.append(url)
+                        logger.info(f"  ✅ Extracted URL from image object {i+1}: {url[:100]}...")
+                    else:
+                        logger.warning(f"  ❌ Extracted URL missing protocol from object {i+1}: {url[:100]}")
+                else:
+                    logger.warning(f"  ❌ Could not extract valid URL from image object {i+1}: {str(img)[:200]}")
+                    
+            elif img and isinstance(img, str):
+                # It's already a string URL
+                img = img.strip()
                 if img.startswith(('http://', 'https://')):
                     valid_images.append(img)
-                    logger.info(f"  ✅ Valid image {i+1}: {img[:100]}...")
+                    logger.info(f"  ✅ Valid image URL {i+1}: {img[:100]}...")
                 else:
                     logger.warning(f"  ❌ Image {i+1} missing http:// or https://: {img[:100]}")
             else:
-                logger.warning(f"  ❌ Image {i+1} invalid type: {type(img)} - {img}")
+                logger.warning(f"  ❌ Image {i+1} invalid type: {type(img)} - {str(img)[:100]}")
         
         logger.info(f"📊 Valid images: {len(valid_images)} out of {len(images)}")
         
@@ -122,7 +153,9 @@ def analyze():
             if not valid_images:
                 logger.warning("⚠️ No valid images to analyze")
                 if images:
-                    logger.info(f"  Raw images data sample: {str(images[:3])[:200]}")
+                    # Show sample of first image to help debug
+                    sample = str(images[0])[:200] if images else "None"
+                    logger.info(f"  First image data sample: {sample}")
             if not synthid:
                 logger.warning("⚠️ SynthID detector not initialized")
         
