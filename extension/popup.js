@@ -1,5 +1,5 @@
-// popup.js — COMPLETE WORKING VERSION for YOUR branch
-console.log("[Listing Inspector] popup.js loaded - WORKING VERSION");
+// popup.js — COMPLETE VERSION with Review Window
+console.log("[Listing Inspector] popup.js loaded - COMPLETE VERSION");
 
 const BACKEND_URL = 'http://localhost:5000/analyze';
 
@@ -10,8 +10,8 @@ async function getActiveTab() {
 
 function el(id) { return document.getElementById(id); }
 
-function render(resp, synthidResult) {
-  console.log("[Listing Inspector] render() called", { resp, synthidResult });
+function render(resp, backendResult) {
+  console.log("[Listing Inspector] render() called", { content: resp, backend: backendResult });
 
   const statusEl = el("status");
   const scoreEl = el("score");
@@ -24,12 +24,14 @@ function render(resp, synthidResult) {
   let html = '';
 
   // Add AI results if they exist
-  if (synthidResult && synthidResult.results?.synthid) {
-    const aiData = synthidResult.results.synthid;
-    const isAIDetected = aiData.any_ai || aiData.is_ai_generated || false;
-    const confidence = aiData.results?.[0]?.confidence || aiData.confidence || 0;
-    const explanation = aiData.results?.[0]?.explanation || aiData.explanation || '';
-    const indicators = aiData.results?.[0]?.indicators || aiData.indicators || [];
+  if (backendResult && backendResult.success && backendResult.results?.synthid) {
+    const aiData = backendResult.results.synthid;
+    const isAIDetected = aiData.is_ai_generated || false;
+    const confidence = aiData.confidence || 0;
+    const explanation = aiData.explanation || '';
+    const indicators = aiData.indicators || [];
+    const imagesAnalyzed = aiData.images_analyzed || 1;
+    const totalImages = aiData.total_images || resp.data?.images?.length || 0;
     
     let indicatorsHtml = '';
     if (indicators.length > 0) {
@@ -67,7 +69,7 @@ function render(resp, synthidResult) {
         ` : ''}
         
         <div style="margin-top: 10px; font-size: 11px; color: #999;">
-          📸 Images: ${aiData.images_analyzed || 1}/${aiData.total_images || resp.data?.images?.length || 0}
+          📸 Images analyzed: ${imagesAnalyzed}/${totalImages}
         </div>
       </div>
       <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
@@ -84,7 +86,24 @@ function render(resp, synthidResult) {
   }
 
   if (signalsEl) signalsEl.innerHTML = html;
-  if (rawEl) rawEl.textContent = JSON.stringify({content: resp, backend: synthidResult}, null, 2);
+  if (rawEl) rawEl.textContent = JSON.stringify({content: resp, backend: backendResult}, null, 2);
+}
+
+async function openReviewWindow(tabId) {
+  console.log("[Listing Inspector] 🔴 Opening review window...");
+  
+  // Try multiple times to ensure it opens
+  for (let i = 0; i < 3; i++) {
+    chrome.tabs.sendMessage(tabId, { type: "OPEN_REVIEWS" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.log(`[Listing Inspector] Attempt ${i+1} failed:`, chrome.runtime.lastError.message);
+      } else {
+        console.log(`[Listing Inspector] ✅ Review window opened on attempt ${i+1}`);
+      }
+    });
+    // Wait between attempts
+    await new Promise(r => setTimeout(r, 500));
+  }
 }
 
 async function runScan() {
@@ -140,8 +159,6 @@ async function runScan() {
         report: resp.report
       };
       
-      console.log("[Listing Inspector] Payload images:", resp.data?.images);
-      
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,6 +183,9 @@ async function runScan() {
       if (statusEl) statusEl.textContent = "AI analysis failed - is backend running?";
       render(resp, null);
     }
+    
+    // ALWAYS open review window at the end
+    await openReviewWindow(tab.id);
   });
 }
 

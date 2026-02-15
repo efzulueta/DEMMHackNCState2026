@@ -1,5 +1,5 @@
-// content.js — COMPLETE WORKING VERSION for YOUR branch
-console.log("[content.js] Loaded - WORKING VERSION");
+// content.js — COMPLETE VERSION with Review Window Support
+console.log("[content.js] Loaded - COMPLETE VERSION");
 
 function text(el) {
   return el ? el.textContent.trim() : null;
@@ -228,6 +228,7 @@ function computeRisk(data) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log("[content.js] Received message:", msg.type);
   
+  // Handle SCAN_LISTING
   if (msg?.type === "SCAN_LISTING") {
     console.log("[content.js] Starting scan...");
     
@@ -245,6 +246,57 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       data: merged,
       report: { risk, signals }
     });
+  }
+  
+  // Handle OPEN_REVIEWS
+  if (msg?.type === "OPEN_REVIEWS") {
+    console.log("[content.js] 🔴 Opening review window...");
+    
+    // Method 1: Find and click reviews tab
+    const reviewSelectors = [
+      'a[href*="reviews"]',
+      'button[data-review-tab]',
+      '[data-appears-component-name="review_tab"]',
+      '.reviews-tab',
+      'button:contains("Reviews")',
+      'a:contains("ratings")',
+      '[data-review-region]',
+      '#reviews-tab'
+    ];
+    
+    let clicked = false;
+    
+    for (const selector of reviewSelectors) {
+      try {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          console.log(`[content.js] Trying to click: ${selector}`);
+          el.click();
+          clicked = true;
+          break;
+        }
+        if (clicked) break;
+      } catch (e) {}
+    }
+    
+    // Method 2: Look for any element with review text
+    if (!clicked) {
+      const allElements = document.querySelectorAll('a, button, div[role="button"]');
+      for (const el of allElements) {
+        const text = el.textContent.toLowerCase();
+        if (text.includes('review') || text.includes('rating') || text.includes('feedback')) {
+          try {
+            console.log(`[content.js] Clicking element with text: ${text}`);
+            el.click();
+            clicked = true;
+            break;
+          } catch (e) {}
+        }
+      }
+    }
+    
+    console.log(`[content.js] Review window ${clicked ? 'opened' : 'not found'}`);
+    sendResponse({ opened: clicked });
   }
   
   return true;
