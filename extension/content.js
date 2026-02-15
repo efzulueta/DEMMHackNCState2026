@@ -91,46 +91,75 @@ function extractFromJsonLd() {
 /* ---------------------------
    DOM extraction
 --------------------------- */
-function getSellerAgeYears() {
+function getSellerAgeMonths() {
   try {
     const wrapper =
       document.querySelector('[data-appears-component-name="lp_seller_cred_tenure"]') ||
       document.querySelector('[data-appears-component-name*="seller_cred_tenure"]');
 
+    // Helper: convert any tenure string → months
+    function tenureToMonths(str) {
+      if (!str) return null;
+      const txt = String(str).toLowerCase();
+
+      const num = parseNumber(txt);
+      if (num == null) return null;
+
+      if (/year/.test(txt)) {
+        return Math.round(num * 12);
+      }
+
+      if (/month/.test(txt)) {
+        return Math.round(num);
+      }
+
+      return null;
+    }
+
     if (wrapper) {
-      // 1) Try attribute first
+      // 1) Attribute JSON
       const eventData = wrapper.getAttribute("data-appears-event-data");
       if (eventData) {
         try {
           const obj = JSON.parse(eventData);
-          const tenureStr = String(obj.tenure || "");
-          if (/month/i.test(tenureStr)) return 0;
-          const yrs = parseNumber(tenureStr);
-          if (yrs != null) return yrs;
+          const months = tenureToMonths(obj.tenure);
+          if (months != null) return months;
         } catch { }
       }
 
-      // 2) Fallback: visible text
-      const txt = String(wrapper.textContent || "");
-      if (/month/i.test(txt)) return 0;
-      const yrs = parseNumber(txt);
-      if (yrs != null) return yrs;
+      // 2) Visible text
+      const months = tenureToMonths(wrapper.textContent);
+      if (months != null) return months;
     }
 
     // 3) Fallback scan
-    const ageEl = Array.from(document.querySelectorAll("span,div,a,p,li,button"))
-      .find(n => /(years?\s+on\s+etsy|months?\s+on\s+etsy|on\s+etsy\s+since|since\s+\d{4}|opened\s+in\s+\d{4})/i
-        .test((n.textContent || "")));
+    const ageEl = Array.from(
+      document.querySelectorAll("span,div,a,p,li,button")
+    ).find(n =>
+      /(years?\s+on\s+etsy|months?\s+on\s+etsy|on\s+etsy\s+since|since\s+\d{4}|opened\s+in\s+\d{4})/i
+        .test(n.textContent || "")
+    );
 
     if (ageEl) {
       const t = String(ageEl.textContent || "");
-      if (/month/i.test(t)) return 0;
-      return parseNumber(t);
+
+      // Handle "since 2018" / "opened in 2019"
+      const yearMatch = t.match(/\b(20\d{2}|19\d{2})\b/);
+      if (yearMatch) {
+        const startYear = Number(yearMatch[1]);
+        const now = new Date();
+        const months =
+          (now.getFullYear() - startYear) * 12 + now.getMonth();
+        return months;
+      }
+
+      const months = tenureToMonths(t);
+      if (months != null) return months;
     }
 
     return null;
   } catch (e) {
-    console.warn("[EXT] getSellerAgeYears failed:", e);
+    console.warn("[EXT] getSellerAgeMonths failed:", e);
     return null;
   }
 }
@@ -185,8 +214,8 @@ function extractFromDom() {
     .find(n => /sales/i.test(n.textContent) && /\d/.test(n.textContent) && n.textContent.length < 120);
   const salesCount = parseCompactNumber(salesEl?.textContent || null);
 
-  // Seller age often appears as "X years on Etsy" or "X years on Etsy"
-  const sellerAge = getSellerAgeYears();
+  // Seller age often appears as "X years on Etsy" or "X months on Etsy"
+  const sellerAgeMonths = getSellerAgeMonths();
 
   // Listing age often appears as "Listed on <date>"
   const listedDate = getListingCreatedDate();
@@ -200,7 +229,7 @@ function extractFromDom() {
   // This can be noisy; we’ll keep first ~20 unique short texts
   const reviewTexts = Array.from(new Set(reviewBlocks.map(n => n.textContent.trim()))).slice(0, 20);
 
-  return { title, images, sellerName, salesCount, sellerAge, listingAgeDays, reviewTexts };
+  return { title, images, sellerName, salesCount, sellerAgeMonths, listingAgeDays, reviewTexts };
 }
 
 /* ---------------------------
