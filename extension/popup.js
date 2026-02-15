@@ -1,5 +1,5 @@
-// popup.js — COMPLETE FIXED VERSION with Review Window
-console.log("[Listing Inspector] popup.js loaded - COMPLETE FIXED VERSION");
+// popup.js — MERGED VERSION with AI + Review Window
+console.log("[Listing Inspector] popup.js loaded - MERGED VERSION");
 
 const BACKEND_URL = 'http://localhost:5000/analyze';
 
@@ -19,8 +19,11 @@ function render(resp, backendResult) {
   const rawEl = el("raw");
 
   if (statusEl) statusEl.textContent = "Done.";
-  if (scoreEl) scoreEl.innerHTML = `<strong>Seller Risk Score:</strong> ${resp.report?.risk ?? 0}/100`;
 
+  const risk = resp?.report?.risk ?? 0;
+  const sigs = resp?.report?.signals ?? [];
+
+  // Build HTML with AI results first
   let html = '';
 
   // Add AI results if they exist
@@ -30,187 +33,116 @@ function render(resp, backendResult) {
     const confidence = aiData.confidence || 0;
     const explanation = aiData.explanation || '';
     const indicators = aiData.indicators || [];
-    const imagesAnalyzed = aiData.images_analyzed || 1;
-    const totalImages = aiData.total_images || resp.data?.images?.length || 0;
-    
-    let indicatorsHtml = '';
-    if (indicators.length > 0) {
-      indicatorsHtml = '<ul style="margin-top: 5px; font-size: 11px;">';
-      indicators.forEach(ind => {
-        indicatorsHtml += `<li>${ind}</li>`;
-      });
-      indicatorsHtml += '</ul>';
-    }
     
     html += `
-      <div style="margin: 15px 0; padding: 15px; border-radius: 6px; background: ${isAIDetected ? '#ffebee' : '#e8f5e8'}; border-left: 4px solid ${isAIDetected ? '#f44336' : '#4caf50'}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="display: flex; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 20px; margin-right: 8px;">🤖</span>
-          <strong style="font-size: 16px;">AI Image Analysis</strong>
-        </div>
-        
-        <div style="font-weight: bold; margin: 10px 0; font-size: 16px;">
-          ${isAIDetected ? '⚠️ AI-GENERATED IMAGE DETECTED!' : '✅ No AI Generation Detected'}
-        </div>
-        
-        <div style="margin: 5px 0;">
-          <span style="background: ${isAIDetected ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
-            Confidence: ${confidence}%
-          </span>
-        </div>
-        
-        ${indicatorsHtml}
-        
-        ${explanation ? `
-          <div style="margin-top: 10px; font-size: 12px; color: #555; background: rgba(255,255,255,0.5); padding: 8px; border-radius: 4px;">
-            <strong>📝 Analysis:</strong><br>
-            ${explanation}
-          </div>
-        ` : ''}
-        
-        <div style="margin-top: 10px; font-size: 11px; color: #999;">
-          📸 Images analyzed: ${imagesAnalyzed}/${totalImages}
-        </div>
+      <div style="margin: 10px 0; padding: 12px; border-radius: 6px; background: ${isAIDetected ? '#ffebee' : '#e8f5e8'}; border-left: 4px solid ${isAIDetected ? '#f44336' : '#4caf50'};">
+        <div style="font-weight: bold; margin-bottom: 5px;">🤖 AI Detection:</div>
+        <div>${isAIDetected ? '⚠️ AI GENERATED' : '✅ Real Image'}</div>
+        <div style="font-size: 12px; color: #666;">Confidence: ${confidence}%</div>
+        ${indicators.length > 0 ? '<div style="margin-top: 8px; font-size: 11px;">Indicators:<ul>' + indicators.map(i => `<li>${i}</li>`).join('') + '</ul></div>' : ''}
+        ${explanation ? `<div style="margin-top: 8px; font-size: 11px; background: white; padding: 6px; border-radius: 4px;">${explanation.substring(0, 150)}${explanation.length > 150 ? '...' : ''}</div>` : ''}
       </div>
-      <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
+      <hr style="margin: 10px 0;">
     `;
   }
 
   // Add seller signals
-  if (resp.report?.signals?.length) {
-    html += '<strong>📋 Seller Signals:</strong><ul style="margin: 8px 0 0 20px;">';
-    resp.report.signals.forEach(s => html += `<li style="margin: 4px 0; font-size: 12px;">${s}</li>`);
+  if (sigs.length > 0) {
+    html += `<div style="margin-top: 10px;"><strong>Seller Risk Score:</strong> ${risk}/100</div>`;
+    html += '<ul style="margin: 5px 0 0 20px;">';
+    sigs.forEach(s => html += `<li style="margin: 3px 0; font-size: 12px;">${s}</li>`);
     html += '</ul>';
-  } else {
-    html += '<div style="color: #999; font-style: italic; font-size: 12px;">No seller signals detected</div>';
   }
 
   if (signalsEl) signalsEl.innerHTML = html;
+  if (scoreEl) scoreEl.innerHTML = ''; // Already included in html
   if (rawEl) rawEl.textContent = JSON.stringify({content: resp, backend: backendResult}, null, 2);
 }
 
 async function openReviewWindow(tabId) {
-  console.log("[Listing Inspector] 🔴 Opening review window...");
+  console.log("[Listing Inspector] Opening review window...");
   
-  // Try multiple methods to open reviews
-  const methods = [
-    { type: "OPEN_REVIEWS_CLICK" },      // Try clicking review tab
-    { type: "OPEN_REVIEWS_POPUP" }       // Try opening popup
-  ];
-  
-  for (const method of methods) {
-    console.log(`[Listing Inspector] Trying method: ${method.type}`);
-    
-    const result = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabId, method, (response) => {
-        if (chrome.runtime.lastError) {
-          console.log(`[Listing Inspector] Method failed: ${chrome.runtime.lastError.message}`);
-          resolve(false);
-        } else {
-          console.log(`[Listing Inspector] Method result:`, response);
-          resolve(response?.opened || false);
-        }
-      });
-    });
-    
-    if (result) {
-      console.log(`[Listing Inspector] ✅ Review opened with method: ${method.type}`);
-      break;
+  // Simple click on reviews tab
+  chrome.tabs.sendMessage(tabId, { type: "OPEN_REVIEWS" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.log("Review open failed:", chrome.runtime.lastError.message);
+    } else {
+      console.log("Review open result:", response);
     }
-    
-    // Wait between attempts
-    await new Promise(r => setTimeout(r, 500));
-  }
+  });
 }
 
 async function runScan() {
-  console.log("[Listing Inspector] 🔍 Scan started");
+  console.log("[Listing Inspector] Scan started");
   
   const statusEl = el("status");
-  const signalsEl = el("signals");
   const scoreEl = el("score");
+  const signalsEl = el("signals");
   const rawEl = el("raw");
 
-  if (statusEl) statusEl.textContent = "Step 1: Getting page data...";
-  if (signalsEl) signalsEl.innerHTML = '<div style="color: #666; font-style: italic;">Loading...</div>';
-  if (scoreEl) scoreEl.innerHTML = "";
+  if (statusEl) statusEl.textContent = "Scanning…";
+  if (scoreEl) scoreEl.textContent = "";
+  if (signalsEl) signalsEl.innerHTML = "";
   if (rawEl) rawEl.textContent = "";
 
-  // Get active tab
   const tab = await getActiveTab();
-  console.log("[Listing Inspector] Tab:", tab?.url);
-  
   if (!tab?.id) {
-    if (statusEl) statusEl.textContent = "Error: No active tab";
+    if (statusEl) statusEl.textContent = "No active tab found.";
     return;
   }
 
-  // Get data from content.js
-  console.log("[Listing Inspector] Getting data from content.js...");
-  
+  // First get data from content.js
   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
     if (chrome.runtime.lastError) {
-      console.error("[Listing Inspector] Error:", chrome.runtime.lastError);
-      if (statusEl) statusEl.textContent = "Error: " + chrome.runtime.lastError.message;
+      const msg = chrome.runtime.lastError.message || "Unknown error";
+      if (statusEl) statusEl.textContent = "Error: " + msg;
+      if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
       return;
     }
 
-    console.log("[Listing Inspector] Content response:", resp);
-    
-    if (!resp?.ok) {
-      if (statusEl) statusEl.textContent = "Error: Could not scan page";
+    if (!resp || typeof resp !== "object" || resp.ok !== true) {
+      if (statusEl) statusEl.textContent = "Could not scan page.";
+      if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
       return;
     }
 
-    console.log("[Listing Inspector] ✅ Got page data with", resp.data?.images?.length, "images");
+    console.log("[Listing Inspector] Got page data with", resp.data?.images?.length, "images");
     
-    if (statusEl) statusEl.textContent = `Step 2: Analyzing ${resp.data?.images?.length || 0} images with AI...`;
+    if (statusEl) statusEl.textContent = "Analyzing images with AI...";
     
-    // Call the backend
+    // Now call your backend
     try {
-      console.log("[Listing Inspector] 📡 Sending to backend:", BACKEND_URL);
-      
-      const payload = {
-        url: resp.url,
-        data: resp.data,
-        report: resp.report
-      };
-      
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          url: resp.url,
+          data: resp.data,
+          report: resp.report
+        })
       });
       
-      console.log("[Listing Inspector] Backend response status:", response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
       const backendResult = await response.json();
-      console.log("[Listing Inspector] ✅ Backend result:", backendResult);
+      console.log("[Listing Inspector] AI Result:", backendResult);
       
       // Show results
-      if (statusEl) statusEl.textContent = "Complete!";
       render(resp, backendResult);
       
     } catch (error) {
-      console.error("[Listing Inspector] ❌ Backend error:", error);
-      if (statusEl) statusEl.textContent = "AI analysis failed - is backend running?";
+      console.error("[Listing Inspector] Backend error:", error);
+      if (statusEl) statusEl.textContent = "AI detection failed";
       render(resp, null);
     }
     
     // ALWAYS open review window at the end
-    await openReviewWindow(tab.id);
+    openReviewWindow(tab.id);
   });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("[Listing Inspector] DOM ready");
   const btn = el("scan");
-  if (btn) {
-    btn.addEventListener("click", runScan);
-    console.log("[Listing Inspector] ✅ Scan button ready");
-  }
+  if (!btn) return;
+  btn.addEventListener("click", runScan);
 });
