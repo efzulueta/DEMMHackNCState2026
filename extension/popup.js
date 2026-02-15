@@ -1,4 +1,4 @@
-// popup.js - Updated to call SynthID backend and display results
+// popup.js - Updated to call SynthID backend and display SynthID results only
 
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -25,51 +25,53 @@ function render(resp, synthidResult) {
   // Show SynthID results if available
   if (synthidResult && synthidResult.success && synthidResult.results?.synthid) {
     const aiData = synthidResult.results.synthid;
-    const aiDetected = aiData.any_ai;
-    const aiConfidence = aiData.results[0]?.confidence || 0;
-    const aiExplanation = aiData.results[0]?.explanation || 'No explanation';
-    const aiIndicators = aiData.results[0]?.indicators || [];
     
-    const aiDiv = document.createElement('div');
-    aiDiv.style.margin = '15px 0';
-    aiDiv.style.padding = '15px';
-    aiDiv.style.borderRadius = '6px';
-    aiDiv.style.backgroundColor = aiDetected ? '#ffebee' : '#e8f5e8';
-    aiDiv.style.borderLeft = aiDetected ? '4px solid #f44336' : '4px solid #4caf50';
-    aiDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    // Extract SynthID-specific fields
+    const hasSynthid = aiData.has_synthid || false;
+    const confidence = aiData.confidence || 0;
+    const watermarkLocation = aiData.watermark_location || 'unknown';
+    const explanation = aiData.explanation || 'No explanation';
     
-    let indicatorsHtml = '';
-    if (aiIndicators.length > 0) {
-      indicatorsHtml = '<div style="margin-top: 10px;"><strong>🔍 Indicators:</strong><ul style="margin: 5px 0 0 20px;">';
-      aiIndicators.forEach(ind => {
-        indicatorsHtml += `<li style="font-size: 12px;">${ind}</li>`;
-      });
-      indicatorsHtml += '</ul></div>';
-    }
+    // Image stats
+    const imagesAnalyzed = aiData.images_analyzed || 0;
+    const validImages = aiData.valid_images || 0;
+    const totalImages = aiData.total_images || 0;
     
-    aiDiv.innerHTML = `
+    const synthidDiv = document.createElement('div');
+    synthidDiv.style.margin = '15px 0';
+    synthidDiv.style.padding = '15px';
+    synthidDiv.style.borderRadius = '6px';
+    synthidDiv.style.backgroundColor = hasSynthid ? '#ffebee' : '#e8f5e8';
+    synthidDiv.style.borderLeft = hasSynthid ? '4px solid #f44336' : '4px solid #4caf50';
+    synthidDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    
+    synthidDiv.innerHTML = `
       <div style="display: flex; align-items: center; margin-bottom: 8px;">
-        <span style="font-size: 20px; margin-right: 8px;">🤖</span>
-        <strong style="font-size: 16px;">AI Image Detection</strong>
+        <span style="font-size: 20px; margin-right: 8px;">🔖</span>
+        <strong style="font-size: 16px;">SynthID Watermark Detection</strong>
       </div>
-      <div style="font-weight: bold; margin: 5px 0;">
-        ${aiDetected ? '⚠️ AI-generated images detected!' : '✅ No AI images found'}
+      <div style="font-weight: bold; margin: 5px 0; font-size: 16px;">
+        ${hasSynthid ? '⚠️ SynthID Watermark DETECTED!' : '✅ No SynthID Watermark Found'}
       </div>
       <div style="margin: 5px 0;">
-        <span style="background: ${aiDetected ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
-          Confidence: ${aiConfidence}%
+        <span style="background: ${hasSynthid ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
+          Confidence: ${confidence}%
         </span>
       </div>
-      <div style="margin: 8px 0; font-size: 13px; color: #555;">
-        ${aiExplanation}
+      ${watermarkLocation !== 'unknown' && hasSynthid ? `
+        <div style="margin: 5px 0; font-size: 13px;">
+          <strong>📍 Location:</strong> ${watermarkLocation}
+        </div>
+      ` : ''}
+      <div style="margin: 8px 0; font-size: 13px; color: #555; background: rgba(255,255,255,0.5); padding: 8px; border-radius: 4px;">
+        ${explanation}
       </div>
-      ${indicatorsHtml}
-      <div style="margin-top: 8px; font-size: 11px; color: #999;">
-        Images analyzed: ${aiData.images_analyzed}/${aiData.total_images}
+      <div style="margin-top: 8px; font-size: 11px; color: #999; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 8px;">
+        <strong>📸 Image Analysis:</strong> ${validImages} valid images found | ${imagesAnalyzed} analyzed
       </div>
     `;
     
-    signalsDiv.appendChild(aiDiv);
+    signalsDiv.appendChild(synthidDiv);
   } else if (synthidResult && !synthidResult.success) {
     // Show error message
     const errorDiv = document.createElement('div');
@@ -81,10 +83,10 @@ function render(resp, synthidResult) {
     errorDiv.innerHTML = `
       <div style="display: flex; align-items: center;">
         <span style="font-size: 20px; margin-right: 8px;">⚠️</span>
-        <strong>AI Detection Unavailable</strong>
+        <strong>SynthID Detection Unavailable</strong>
       </div>
       <div style="margin-top: 5px; font-size: 12px; color: #666;">
-        ${synthidResult.error || 'Could not analyze images'}
+        ${synthidResult.error || 'Could not analyze images for SynthID watermark'}
       </div>
     `;
     signalsDiv.appendChild(errorDiv);
@@ -126,7 +128,7 @@ function render(resp, synthidResult) {
   // Show raw data in details section
   el("raw").textContent = JSON.stringify({
     seller_data: resp,
-    ai_detection: synthidResult
+    synthid_detection: synthidResult
   }, null, 2);
 }
 
@@ -155,13 +157,18 @@ el("scan").addEventListener("click", async () => {
     }
     
     console.log("📦 Data from content.js:", resp);
-    el("status").textContent = "🔍 Analyzing images with AI...";
+    el("status").textContent = "🔍 Checking for SynthID watermark...";
     
     try {
       // Call your SynthID backend
       const YOUR_BACKEND_URL = 'http://localhost:5000/analyze';
       
       console.log("📡 Sending to backend:", YOUR_BACKEND_URL);
+      console.log("📤 Payload:", {
+        url: resp.url,
+        data: resp.data,
+        report: resp.report
+      });
       
       const response = await fetch(YOUR_BACKEND_URL, {
         method: 'POST',
@@ -189,7 +196,7 @@ el("scan").addEventListener("click", async () => {
       
     } catch (error) {
       console.error("❌ Error calling SynthID backend:", error);
-      el("status").textContent = "⚠️ AI detection unavailable - backend not running?";
+      el("status").textContent = "⚠️ SynthID detection unavailable - backend not running?";
       // Still show original results
       render(resp, null);
     }
