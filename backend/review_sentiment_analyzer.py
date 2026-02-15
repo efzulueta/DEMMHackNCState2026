@@ -129,18 +129,24 @@ class ReviewSentimentAnalyzer:
             logger.warning(f"Error analyzing sentiment: {e}")
             return 0.0
     
-    def _is_suspicious_mismatch(self, sentiment_score: float, rating: int) -> bool:
+    def _is_suspicious_mismatch(self, sentiment_score: float, rating) -> bool:
         """
         Check if sentiment and rating don't match (potential fake review)
         
         Args:
             sentiment_score: -1 to 1 (negative to positive)
-            rating: 1-5 stars
+            rating: 1-5 stars (can be int or string)
             
         Returns:
             True if suspicious mismatch detected
         """
-        if rating is None:
+        if rating is None or rating == '':
+            return False
+        
+        # Convert rating to int if it's a string
+        try:
+            rating = int(rating)
+        except (ValueError, TypeError):
             return False
         
         # Map rating to expected sentiment range
@@ -161,8 +167,14 @@ class ReviewSentimentAnalyzer:
         
         return False
     
-    def _get_mismatch_reason(self, sentiment_score: float, rating: int) -> str:
+    def _get_mismatch_reason(self, sentiment_score: float, rating) -> str:
         """Get human-readable reason for mismatch"""
+        # Convert rating to int if it's a string
+        try:
+            rating = int(rating)
+        except (ValueError, TypeError):
+            return f"Invalid rating: {rating}"
+            
         if rating >= 4 and sentiment_score < 0:
             return f"{rating}-star rating but negative sentiment ({sentiment_score:.2f})"
         elif rating <= 2 and sentiment_score > 0.2:
