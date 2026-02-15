@@ -1,5 +1,5 @@
-// content.js — COMPLETE VERSION with Review Window Support
-console.log("[content.js] Loaded - COMPLETE VERSION");
+// content.js — COMPLETE FIXED VERSION with Review Window Support
+console.log("[content.js] Loaded - COMPLETE FIXED VERSION");
 
 function text(el) {
   return el ? el.textContent.trim() : null;
@@ -248,18 +248,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
   }
   
-  // Handle OPEN_REVIEWS
-  if (msg?.type === "OPEN_REVIEWS") {
-    console.log("[content.js] 🔴 Opening review window...");
+  // Handle OPEN_REVIEWS_CLICK - Try to click review tab
+  if (msg?.type === "OPEN_REVIEWS_CLICK") {
+    console.log("[content.js] 🔴 Trying to click review tab...");
     
-    // Method 1: Find and click reviews tab
     const reviewSelectors = [
       'a[href*="reviews"]',
       'button[data-review-tab]',
       '[data-appears-component-name="review_tab"]',
       '.reviews-tab',
+      '.wt-tab:contains("Reviews")',
+      'a:contains("Reviews")',
       'button:contains("Reviews")',
-      'a:contains("ratings")',
       '[data-review-region]',
       '#reviews-tab'
     ];
@@ -270,7 +270,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         const elements = document.querySelectorAll(selector);
         for (const el of elements) {
-          console.log(`[content.js] Trying to click: ${selector}`);
+          console.log(`[content.js] Clicking: ${selector}`);
           el.click();
           clicked = true;
           break;
@@ -279,24 +279,43 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       } catch (e) {}
     }
     
-    // Method 2: Look for any element with review text
-    if (!clicked) {
-      const allElements = document.querySelectorAll('a, button, div[role="button"]');
-      for (const el of allElements) {
-        const text = el.textContent.toLowerCase();
-        if (text.includes('review') || text.includes('rating') || text.includes('feedback')) {
-          try {
-            console.log(`[content.js] Clicking element with text: ${text}`);
-            el.click();
-            clicked = true;
-            break;
-          } catch (e) {}
+    sendResponse({ opened: clicked, method: 'click' });
+  }
+  
+  // Handle OPEN_REVIEWS_POPUP - Try to open review popup
+  if (msg?.type === "OPEN_REVIEWS_POPUP") {
+    console.log("[content.js] 🔴 Trying to open review popup...");
+    
+    // Look for "See all reviews" or "Read all reviews" buttons
+    const popupSelectors = [
+      'a[href*="reviews/all"]',
+      'button:contains("See all reviews")',
+      'button:contains("Read all reviews")',
+      'a:contains("See all reviews")',
+      '.see-all-reviews',
+      '.read-all-reviews',
+      'button:contains("View all")'
+    ];
+    
+    let clicked = false;
+    
+    for (const selector of popupSelectors) {
+      try {
+        // Use XPath for contains text since CSS :contains doesn't work in all browsers
+        const xpath = `//*[contains(text(), 'See all reviews') or contains(text(), 'Read all reviews') or contains(text(), 'View all reviews')]`;
+        const elements = document.evaluate(xpath, document, null, XPathResult.ANY_TYPE, null);
+        let element = elements.iterateNext();
+        while (element) {
+          console.log(`[content.js] Clicking element with review text`);
+          element.click();
+          clicked = true;
+          break;
         }
-      }
+        if (clicked) break;
+      } catch (e) {}
     }
     
-    console.log(`[content.js] Review window ${clicked ? 'opened' : 'not found'}`);
-    sendResponse({ opened: clicked });
+    sendResponse({ opened: clicked, method: 'popup' });
   }
   
   return true;

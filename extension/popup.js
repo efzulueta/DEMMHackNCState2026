@@ -1,5 +1,5 @@
-// popup.js — COMPLETE VERSION with Review Window
-console.log("[Listing Inspector] popup.js loaded - COMPLETE VERSION");
+// popup.js — COMPLETE FIXED VERSION with Review Window
+console.log("[Listing Inspector] popup.js loaded - COMPLETE FIXED VERSION");
 
 const BACKEND_URL = 'http://localhost:5000/analyze';
 
@@ -92,15 +92,32 @@ function render(resp, backendResult) {
 async function openReviewWindow(tabId) {
   console.log("[Listing Inspector] 🔴 Opening review window...");
   
-  // Try multiple times to ensure it opens
-  for (let i = 0; i < 3; i++) {
-    chrome.tabs.sendMessage(tabId, { type: "OPEN_REVIEWS" }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.log(`[Listing Inspector] Attempt ${i+1} failed:`, chrome.runtime.lastError.message);
-      } else {
-        console.log(`[Listing Inspector] ✅ Review window opened on attempt ${i+1}`);
-      }
+  // Try multiple methods to open reviews
+  const methods = [
+    { type: "OPEN_REVIEWS_CLICK" },      // Try clicking review tab
+    { type: "OPEN_REVIEWS_POPUP" }       // Try opening popup
+  ];
+  
+  for (const method of methods) {
+    console.log(`[Listing Inspector] Trying method: ${method.type}`);
+    
+    const result = await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, method, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log(`[Listing Inspector] Method failed: ${chrome.runtime.lastError.message}`);
+          resolve(false);
+        } else {
+          console.log(`[Listing Inspector] Method result:`, response);
+          resolve(response?.opened || false);
+        }
+      });
     });
+    
+    if (result) {
+      console.log(`[Listing Inspector] ✅ Review opened with method: ${method.type}`);
+      break;
+    }
+    
     // Wait between attempts
     await new Promise(r => setTimeout(r, 500));
   }
