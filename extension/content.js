@@ -117,7 +117,6 @@ function getSellerAgeMonths() {
     }
 
     if (wrapper) {
-      // 1) Attribute JSON
       const eventData = wrapper.getAttribute("data-appears-event-data");
       if (eventData) {
         try {
@@ -439,44 +438,45 @@ function findViewAllReviewsControl(root = document) {
 
 function parseReviewsFromContainer(container) {
   const reviews = [];
-  const reviewEls = Array.from(container.querySelectorAll('.review-card[data-review-region]'));
+  // Use just [data-review-region] without .review-card class
+  const reviewEls = Array.from(container.querySelectorAll('[data-review-region]'));
 
-  console.log(`[DEBUG] Found ${reviewEls.length} review cards in container`);
+  console.log(`[DEBUG] Found ${reviewEls.length} review elements in container`);
 
   for (const el of reviewEls) {
-    // Get review text from the specific structure
-    const textWrapper = el.querySelector('[data-review-text-toggle-wrapper]');
-    if (!textWrapper) {
-      console.log('[DEBUG] No text wrapper found, skipping');
-      continue;
+    // Get rating from aria-label
+    const ratingEl = el.querySelector('[aria-label*="out of"]');
+    let rating = '';
+    if (ratingEl) {
+      const ariaLabel = ratingEl.getAttribute('aria-label') || '';
+      const match = ariaLabel.match(/(\d+)\s+out of/);
+      rating = match ? match[1] : '';
     }
-    
-    const textPara = textWrapper.querySelector('p[id*="review-preview-toggle"]');
-    const reviewText = textPara ? normalizeSpaces(textPara.textContent) : '';
+
+    // Get review text - try multiple selectors
+    let reviewText = '';
+    const textEl = el.querySelector('.wt-text-body') || 
+                   el.querySelector('[class*="review-text"]') ||
+                   el.querySelector('p');
+    if (textEl) {
+      reviewText = normalizeSpaces(textEl.textContent);
+    }
     
     if (!reviewText || reviewText.length < 5) {
       console.log('[DEBUG] No valid review text, skipping');
       continue;
     }
 
-    // Rating from screen-reader text
-    const ratingEl = el.querySelector('.wt-screen-reader-only');
-    let rating = '';
-    if (ratingEl) {
-      const match = ratingEl.textContent.match(/(\d+)\s+out of/);
-      rating = match ? match[1] : '';
-    }
+    // Get reviewer name
+    const reviewerLink = el.querySelector('a[href*="/people/"]');
+    const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
 
-    // Date - look in the link area
-    const dateContainer = el.querySelector('p.wt-text-body-small');
-    const date = dateContainer ? (() => {
-      const match = dateContainer.textContent.match(DATE_RE);
+    // Get date
+    const dateEl = el.querySelector('.wt-sem-text-secondary, .wt-text-body-small');
+    const date = dateEl ? (() => {
+      const match = dateEl.textContent.match(DATE_RE);
       return match ? match[0] : null;
     })() : null;
-
-    // Reviewer name from the link
-    const reviewerLink = el.querySelector('a[data-review-username]');
-    const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
 
     // Check for video/images
     const hasVideo = el.querySelector('video, [class*="video"]') !== null;
@@ -505,6 +505,7 @@ async function expandAndScrapeReviews() {
   const ctl = findViewAllReviewsControl(reviewsRoot) || findViewAllReviewsControl(document);
   if (!ctl) return { reviews: [], mode: "no_control_found" };
 
+  // If it's a link, fetch the page
   if (ctl.tagName === "A") {
     const href = ctl.getAttribute("href");
     if (href) {
@@ -526,47 +527,91 @@ async function expandAndScrapeReviews() {
     }
   }
 
-  // Click the button
+  // It's a button - click it to open dialog
   console.log('[DEBUG] Clicking view all reviews button');
   ctl.click();
 
-  // Wait for content to load - try multiple strategies
-  await sleep(1000);
+  // Wait for dialog to appear (increased wait time)
+  await sleep(2000);
 
-  // Check for expanded inline section first
-  const expanded = await waitFor(() => {
-    const container = document.querySelector('[data-reviews-container]');
-    if (!container) return null;
-    
-    // Make sure reviews are actually loaded
-    const reviewCards = container.querySelectorAll('.review-card[data-review-region]');
-    console.log(`[DEBUG] Found ${reviewCards.length} review cards after click`);
-    
-    return reviewCards.length > 0 ? container : null;
-  }, { timeoutMs: 8000 });
-
-  if (expanded) {
-    console.log('[DEBUG] Found expanded inline reviews');
-    await sleep(500);
-    const reviews = parseReviewsFromContainer(expanded);
-    return { reviews, mode: "clicked_inline" };
-  }
-
-  // Check for modal
-  const modal = await waitFor(
-    () => document.querySelector('[role="dialog"], [aria-modal="true"], .wt-modal, [data-review-modal]'),
-    { timeoutMs: 2000 }
+  // Find the deep-dive-sheet dialog
+  const dialog = await waitFor(
+    () => {
+      const d = document.querySelector('.deep-dive-sheet, [class*="deep-dive"]');
+      if (!d) return null;
+      
+      const isVisible = window.getComputedStyle(d).display !== 'none';
+      return isVisible ? d : null;
+    },
+    { timeoutMs: 10000 }
   );
 
-  if (modal) {
-    console.log('[DEBUG] Found modal with reviews');
-    await sleep(700);
-    const reviews = parseReviewsFromContainer(modal);
-    return { reviews, mode: "clicked_modal" };
+  if (!dialog) {
+    console.log('[DEBUG] Dialog not found, checking for inline expansion');
+    const container = document.querySelector('[data-reviews-container]');
+    if (container) {
+      const reviews = parseReviewsFromContainer(container);
+      return { reviews, mode: "clicked_inline" };
+    }
+    return { reviews: [], mode: "clicked_but_not_found" };
   }
 
-  console.log('[DEBUG] Could not find reviews after clicking');
-  return { reviews: [], mode: "clicked_but_not_found" };
+  console.log('[DEBUG] Dialog opened, collecting reviews from all pages');
+  
+  // Wait for first batch of reviews to load (increased wait)
+  await sleep(1500);
+
+  // Collect reviews from each page
+  const allReviews = [];
+  let currentPage = 1;
+  const maxPages = 20; // Increased limit
+
+  while (currentPage <= maxPages) {
+    console.log(`[DEBUG] Extracting reviews from page ${currentPage}`);
+    
+    // Wait a bit to ensure page is fully loaded
+    await sleep(500);
+    
+    // Extract reviews from CURRENT page
+    const pageReviews = parseReviewsFromContainer(dialog);
+    
+    console.log(`[DEBUG] Page ${currentPage}: found ${pageReviews.length} reviews`);
+    
+    // Add to collection with deduplication
+    pageReviews.forEach(review => {
+      const isDuplicate = allReviews.some(r => 
+        r.text === review.text && r.date === review.date && r.reviewer === review.reviewer
+      );
+      if (!isDuplicate) {
+        allReviews.push(review);
+      }
+    });
+    
+    console.log(`[DEBUG] Total unique reviews so far: ${allReviews.length}`);
+
+    // Look for next page button
+    currentPage++;
+    const nextPageBtn = Array.from(dialog.querySelectorAll('button')).find(btn => {
+      const text = btn.textContent.trim();
+      return text === String(currentPage);
+    });
+
+    if (!nextPageBtn) {
+      console.log('[DEBUG] No more pagination buttons found');
+      break;
+    }
+
+    // Click next page
+    console.log(`[DEBUG] Clicking page ${currentPage} button`);
+    nextPageBtn.click();
+    
+    // CRITICAL: Wait longer for new page to load (increased from 1200ms to 2000ms)
+    await sleep(2000);
+  }
+
+  console.log(`[DEBUG] Finished! Total reviews collected: ${allReviews.length}`);
+
+  return { reviews: allReviews, mode: "dialog_paginated" };
 }
 
 async function getReviewsBestEffort() {
