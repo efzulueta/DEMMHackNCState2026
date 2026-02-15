@@ -1,5 +1,5 @@
-// popup.js — vFINAL-2026-02-14-02 - WITH SYNTHID BACKEND INTEGRATION
-console.log("[Listing Inspector] popup.js loaded vFINAL-2026-02-14-02");
+// popup.js — vFINAL-2026-02-14-03 - DEBUG VERSION
+console.log("[Listing Inspector] popup.js loaded vFINAL-2026-02-14-03");
 
 // Configuration - your backend URL
 const BACKEND_URL = 'http://localhost:5000/analyze';
@@ -12,7 +12,11 @@ async function getActiveTab() {
 function el(id) { return document.getElementById(id); }
 
 function render(resp, synthidResult) {
-  console.log("[Listing Inspector] render() called", { contentScript: resp, backend: synthidResult });
+  console.log("[Listing Inspector] render() called", { 
+    hasContentData: !!resp, 
+    hasBackendData: !!synthidResult,
+    backendData: synthidResult 
+  });
 
   const statusEl = el("status");
   const scoreEl = el("score");
@@ -27,10 +31,10 @@ function render(resp, synthidResult) {
 
   let html = '';
 
-  // Add SynthID/AI results FIRST (so they appear at the top)
+  // Add SynthID/AI results FIRST (if available)
   if (synthidResult && synthidResult.success && synthidResult.results?.synthid) {
     const aiData = synthidResult.results.synthid;
-    console.log("[Listing Inspector] AI Data:", aiData);
+    console.log("[Listing Inspector] AI Data received:", aiData);
     
     const isAIDetected = aiData.is_ai_generated === true;
     const confidence = aiData.confidence || 0;
@@ -131,6 +135,7 @@ function render(resp, synthidResult) {
 
 async function runScan() {
   console.log("[Listing Inspector] runScan() started");
+  console.log("[Listing Inspector] BACKEND_URL =", BACKEND_URL);
   
   const statusEl = el("status");
   const scoreEl = el("score");
@@ -143,12 +148,17 @@ async function runScan() {
   if (rawEl) rawEl.textContent = "";
 
   const tab = await getActiveTab();
+  console.log("[Listing Inspector] Active tab:", tab);
+  
   if (!tab?.id) {
+    console.error("[Listing Inspector] No active tab found");
     if (statusEl) statusEl.textContent = "No active tab found.";
     return;
   }
 
   // First, get data from content.js
+  console.log("[Listing Inspector] Sending message to content.js...");
+  
   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
     if (chrome.runtime.lastError) {
       const msg = chrome.runtime.lastError.message || "Unknown error";
@@ -158,36 +168,44 @@ async function runScan() {
       return;
     }
 
+    console.log("[Listing Inspector] Content script response:", resp);
+
     if (!resp || typeof resp !== "object") {
+      console.error("[Listing Inspector] Invalid response from content script");
       if (statusEl) statusEl.textContent = "No/invalid response from content script.";
       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
       return;
     }
 
     if (resp.ok !== true) {
+      console.error("[Listing Inspector] Content script returned ok=false");
       if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
       if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
       return;
     }
 
-    console.log("[Listing Inspector] Got data from content.js:", resp);
+    console.log("[Listing Inspector] ✅ Got data from content.js");
+    console.log("[Listing Inspector] Images found:", resp.data?.images?.length || 0);
     
     if (statusEl) statusEl.textContent = "Analyzing images with AI...";
     
     try {
       // NOW call YOUR SynthID backend
-      console.log("[Listing Inspector] Calling backend at:", BACKEND_URL);
+      console.log("[Listing Inspector] 📡 Calling backend at:", BACKEND_URL);
+      
+      const payload = {
+        url: resp.url,
+        data: resp.data,
+        report: resp.report
+      };
+      console.log("[Listing Inspector] Payload:", payload);
       
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          url: resp.url,
-          data: resp.data,
-          report: resp.report
-        })
+        body: JSON.stringify(payload)
       });
       
       console.log("[Listing Inspector] Backend response status:", response.status);
@@ -197,13 +215,14 @@ async function runScan() {
       }
       
       const synthidResult = await response.json();
-      console.log("[Listing Inspector] Backend result:", synthidResult);
+      console.log("[Listing Inspector] ✅ Backend result:", synthidResult);
       
       // Render both content script data AND backend results
       render(resp, synthidResult);
       
     } catch (error) {
-      console.error("[Listing Inspector] Backend error:", error);
+      console.error("[Listing Inspector] ❌ Backend error:", error);
+      console.error("[Listing Inspector] Make sure your backend is running at:", BACKEND_URL);
       if (statusEl) statusEl.textContent = "AI detection unavailable - backend not running?";
       // Still show original results without AI
       render(resp, { success: false, error: error.message });
