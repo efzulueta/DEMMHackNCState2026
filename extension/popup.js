@@ -1,5 +1,5 @@
-// popup.js — vFINAL-2026-02-14-03 - DEBUG VERSION
-console.log("[Listing Inspector] popup.js loaded vFINAL-2026-02-14-03");
+// popup.js — vFINAL-2026-02-14-04 - FIXED BACKEND CALL
+console.log("[Listing Inspector] popup.js loaded vFINAL-2026-02-14-04");
 
 // Configuration - your backend URL
 const BACKEND_URL = 'http://localhost:5000/analyze';
@@ -92,20 +92,6 @@ function render(resp, synthidResult) {
       </div>
       <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
     `;
-  } else if (synthidResult && !synthidResult.success) {
-    // Show error message if backend call failed
-    html += `
-      <div style="margin: 15px 0; padding: 15px; border-radius: 6px; background-color: #fff3e0; border-left: 4px solid #ff9800;">
-        <div style="display: flex; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 20px; margin-right: 8px;">⚠️</span>
-          <strong>AI Detection Unavailable</strong>
-        </div>
-        <div style="margin-top: 5px; font-size: 12px; color: #666;">
-          ${synthidResult.error || 'Could not analyze images'}
-        </div>
-      </div>
-      <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
-    `;
   }
   
   // Add seller risk score
@@ -135,7 +121,6 @@ function render(resp, synthidResult) {
 
 async function runScan() {
   console.log("[Listing Inspector] runScan() started");
-  console.log("[Listing Inspector] BACKEND_URL =", BACKEND_URL);
   
   const statusEl = el("status");
   const scoreEl = el("score");
@@ -151,85 +136,82 @@ async function runScan() {
   console.log("[Listing Inspector] Active tab:", tab);
   
   if (!tab?.id) {
-    console.error("[Listing Inspector] No active tab found");
     if (statusEl) statusEl.textContent = "No active tab found.";
     return;
   }
 
-  // First, get data from content.js
-  console.log("[Listing Inspector] Sending message to content.js...");
+  // Get data from content.js with a Promise wrapper
+  console.log("[Listing Inspector] Getting data from content.js...");
   
-  chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
-    if (chrome.runtime.lastError) {
-      const msg = chrome.runtime.lastError.message || "Unknown error";
-      console.error("[Listing Inspector] Content script error:", msg);
-      if (statusEl) statusEl.textContent = "Error: " + msg;
-      if (rawEl) rawEl.textContent = JSON.stringify({ ok: false, error: msg }, null, 2);
-      return;
-    }
-
+  try {
+    const resp = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
     console.log("[Listing Inspector] Content script response:", resp);
-
+    
     if (!resp || typeof resp !== "object") {
-      console.error("[Listing Inspector] Invalid response from content script");
-      if (statusEl) statusEl.textContent = "No/invalid response from content script.";
-      if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
-      return;
+      throw new Error("Invalid response from content script");
     }
-
+    
     if (resp.ok !== true) {
-      console.error("[Listing Inspector] Content script returned ok=false");
-      if (statusEl) statusEl.textContent = "Scan failed (ok=false).";
-      if (rawEl) rawEl.textContent = JSON.stringify(resp, null, 2);
-      return;
+      throw new Error("Content script returned ok=false");
     }
-
+    
     console.log("[Listing Inspector] ✅ Got data from content.js");
     console.log("[Listing Inspector] Images found:", resp.data?.images?.length || 0);
     
     if (statusEl) statusEl.textContent = "Analyzing images with AI...";
     
-    try {
-      // NOW call YOUR SynthID backend
-      console.log("[Listing Inspector] 📡 Calling backend at:", BACKEND_URL);
-      
-      const payload = {
-        url: resp.url,
-        data: resp.data,
-        report: resp.report
-      };
-      console.log("[Listing Inspector] Payload:", payload);
-      
-      const response = await fetch(BACKEND_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      console.log("[Listing Inspector] Backend response status:", response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const synthidResult = await response.json();
-      console.log("[Listing Inspector] ✅ Backend result:", synthidResult);
-      
-      // Render both content script data AND backend results
-      render(resp, synthidResult);
-      
-    } catch (error) {
-      console.error("[Listing Inspector] ❌ Backend error:", error);
-      console.error("[Listing Inspector] Make sure your backend is running at:", BACKEND_URL);
-      if (statusEl) statusEl.textContent = "AI detection unavailable - backend not running?";
-      // Still show original results without AI
-      render(resp, { success: false, error: error.message });
+    // NOW call your backend
+    console.log("[Listing Inspector] 📡 Calling backend at:", BACKEND_URL);
+    
+    const payload = {
+      url: resp.url,
+      data: resp.data,
+      report: resp.report
+    };
+    console.log("[Listing Inspector] Payload:", payload);
+    
+    const fetchResponse = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    console.log("[Listing Inspector] Backend response status:", fetchResponse.status);
+    
+    if (!fetchResponse.ok) {
+      throw new Error(`HTTP ${fetchResponse.status}`);
     }
-  });
+    
+    const synthidResult = await fetchResponse.json();
+    console.log("[Listing Inspector] ✅ Backend result:", synthidResult);
+    
+    // Render both results
+    render(resp, synthidResult);
+    
+  } catch (error) {
+    console.error("[Listing Inspector] ❌ Error:", error);
+    if (statusEl) statusEl.textContent = "Error: " + error.message;
+    if (rawEl) rawEl.textContent = JSON.stringify({ error: error.message }, null, 2);
+    
+    // Still show seller data if we have it
+    if (resp) {
+      render(resp, null);
+    }
+  }
 }
 
+// Wait for DOM to be ready
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[Listing Inspector] DOM loaded, attaching event listener");
   const btn = el("scan");
