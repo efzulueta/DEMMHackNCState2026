@@ -10,6 +10,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import datetime
+import json
 
 # Load SynthID detector
 from analyzers.synthid_detector import SynthIDDetector
@@ -50,16 +51,41 @@ def analyze():
             logger.error("❌ No JSON data received")
             return jsonify({'success': False, 'error': 'No data received'}), 400
             
+        raw = request.get_data(as_text=True)  # raw body Flask received
+        logger.info("📦 RAW BODY (first 2000 chars): %s", raw[:2000])
+
+
         logger.info(f"📥 Analyzing: {data.get('url', 'unknown')}")
-        
+
+        # Show what arrived (keys + samples)
+        logger.info("🧾 Top-level keys: %s", sorted(list(data.keys())))
+        if isinstance(data.get("data"), dict):
+            logger.info("🧾 data keys: %s", sorted(list(data["data"].keys())))
+
         # Get images from scraper - handle different possible structures
         images = []
-        if 'data' in data and isinstance(data['data'], dict):
-            images = data['data'].get('images', [])
-        elif 'images' in data:
-            images = data.get('images', [])
-            
+        if isinstance(data.get("data"), dict):
+            images = data["data"].get("images", []) or []
+        elif "images" in data:
+            images = data.get("images", []) or []
+
         logger.info(f"🖼️ Raw images received: {len(images)}")
+        logger.info("🖼️ Image sample: %s", json.dumps(images[:3], ensure_ascii=False)[:800])
+
+        # Reviews
+        reviews = []
+        if isinstance(data.get("data"), dict):
+            reviews = data["data"].get("reviews", []) or []
+        elif "reviews" in data:
+            reviews = data.get("reviews", []) or []
+
+        logger.info(f"📝 Reviews received: {len(reviews)}")
+        logger.info("📝 Review sample: %s", json.dumps(reviews[:1], ensure_ascii=False)[:800])
+
+        # Extra blocks your extension sends
+        logger.info("📦 reviewFetch: %s", json.dumps(data.get("reviewFetch"), ensure_ascii=False)[:800])
+        logger.info("📦 report: %s", json.dumps(data.get("report"), ensure_ascii=False)[:800])
+
         
         # =====================================================================
         # FIXED: Better image URL validation - handles both strings AND objects
@@ -176,9 +202,21 @@ def analyze():
         
         logger.info(f"📊 Final Risk level: {risk['level']} - {risk['message']}")
         
+        receipt = {
+        "top_level_keys": sorted(list(data.keys())),
+        "data_keys": sorted(list(data.get("data", {}).keys())) if isinstance(data.get("data"), dict) else None,
+        "url": data.get("url"),
+        "images_received": len(images),
+        "valid_images": len(valid_images),
+        "reviews_received": len((data.get("data") or {}).get("reviews", []) or []),
+        "review_fetch": data.get("reviewFetch"),
+        "report_received": data.get("report"),
+        }
+
         # Response for extension
         response = {
             'success': True,
+            'receipt': receipt,
             'url': data.get('url', 'unknown'),
             'timestamp': datetime.now().isoformat(),
             'analyzers_status': {
@@ -254,4 +292,5 @@ if __name__ == '__main__':
     print(f'   curl -X POST http://localhost:{port}/analyze -H "Content-Type: application/json" -d "{{\\"url\\":\\"test\\",\\"data\\":{{\\"images\\":[\\"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400\\"]}}}}"')
     print("="*70 + "\n")
     
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
