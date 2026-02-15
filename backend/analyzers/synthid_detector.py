@@ -1,6 +1,6 @@
-# backend/analyzers/synthid_detector.py
 """
-SynthID Detector - Works with images from scraper
+synthid_detector.py - AI Image Detector using Gemini
+Detects if images are AI-generated using Google's Gemini Vision
 """
 
 import os
@@ -11,129 +11,222 @@ from io import BytesIO
 import logging
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Dict
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class SynthIDDetector:
-    """Detects AI-generated images using Gemini"""
+    """
+    Detects AI-generated images using Gemini Vision
+    """
     
-    def __init__(self):
-        self.api_key = os.getenv('GEMINI_API_KEY')
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY not found in .env")
+    def __init__(self, api_key: str = None):
+        """Initialize with Gemini API key"""
+        self.api_key = api_key or os.getenv('GEMINI_API_KEY')
         
+        if not self.api_key:
+            raise ValueError("❌ GEMINI_API_KEY not found in .env file!")
+        
+        # Configure Gemini
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        logger.info("SynthID Detector ready")
+        
+        # FIXED: Updated model name - try different versions
+        try:
+            # Try the newer model name first
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info("✅ Gemini model loaded: gemini-1.5-flash")
+        except Exception as e:
+            try:
+                # Fallback to older model
+                self.model = genai.GenerativeModel('gemini-pro-vision')
+                logger.info("✅ Gemini model loaded: gemini-pro-vision")
+            except Exception as e2:
+                # List available models to help debug
+                logger.error(f"❌ Failed to load Gemini model: {e2}")
+                logger.info("📋 Available models:")
+                for m in genai.list_models():
+                    logger.info(f"   - {m.name}")
+                raise
     
     def analyze_image(self, image_url: str) -> Dict:
-        """Analyze a single image from their scraper"""
+        """
+        Analyze a single image for AI generation signs
+        
+        Args:
+            image_url: URL of the image to analyze
+            
+        Returns:
+            dict: Analysis results
+        """
         logger.info(f"Analyzing: {image_url[:50]}...")
         
         try:
-            # Download image
-            response = requests.get(image_url, timeout=10)
-            img = Image.open(BytesIO(response.content))
+            # Download the image with proper headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.get(image_url, timeout=10, headers=headers)
             
-            # Create prompt
+            if response.status_code != 200:
+                return self._error_result(f"HTTP {response.status_code}")
+            
+            # Check content type
+            content_type = response.headers.get('content-type', '')
+            if 'image' not in content_type:
+                return self._error_result(f"Not an image: {content_type}")
+            
+            # Open image
+            try:
+                img = Image.open(BytesIO(response.content))
+                logger.info(f"Image opened: {img.size} {img.format}")
+            except Exception as e:
+                return self._error_result(f"Cannot open image: {str(e)}")
+            
+            # Create the prompt
             prompt = self._create_prompt()
             
-            # Get Gemini's analysis
+            # Send to Gemini
             response = self.model.generate_content([prompt, img])
+            
+            # Parse the response
             result = self._parse_response(response.text)
             
+            logger.info(f"Analysis complete - AI detected: {result['is_ai_generated']}")
             return result
             
         except Exception as e:
-            logger.error(f"Error: {e}")
-            return {
-                'has_synthid': False,
-                'confidence': 0,
-                'is_ai_generated': False,
-                'explanation': f"Error: {str(e)}",
-                'indicators': []
-            }
-    
-    def analyze_product_images(self, images: List[str]) -> Dict:
-        """
-        Analyze all product images from their scraper
-        Returns combined results
-        """
-        if not images:
-            return {
-                'any_ai_generated': False,
-                'image_count': 0,
-                'results': []
-            }
-        
-        results = []
-        ai_count = 0
-        
-        for i, img_url in enumerate(images[:5]):  # Limit to first 5
-            logger.info(f"Image {i+1}/{min(len(images),5)}")
-            result = self.analyze_image(img_url)
-            result['image_url'] = img_url
-            results.append(result)
-            
-            if result['is_ai_generated']:
-                ai_count += 1
-        
-        return {
-            'any_ai_generated': ai_count > 0,
-            'ai_image_count': ai_count,
-            'total_analyzed': len(results),
-            'results': results,
-            'summary': self._generate_summary(ai_count, len(results))
-        }
+            logger.error(f"Error in analyze_image: {e}")
+            return self._error_result(str(e))
     
     def _create_prompt(self) -> str:
-        return """Analyze this image for signs of AI generation and SynthID watermarks.
+        """Create the prompt for Gemini"""
+        return """You are an AI image forensic expert. Analyze this image and determine if it was generated by AI or is a real photograph.
 
-Check for:
-1. SynthID watermarks (Google's invisible AI watermark)
-2. AI artifacts (weird hands, unnatural textures)
-3. Signs of AI generation
+Check for these specific AI indicators:
 
-Return JSON:
+1. HANDS AND FINGERS:
+   - Extra or missing fingers
+   - Hands that look twisted or unnatural
+   - Fingers merging together
+
+2. FACES AND EYES:
+   - Eyes that look glassy or dead
+   - Asymmetrical facial features
+   - Teeth that look weird
+   - Skin that looks too smooth/waxy
+
+3. TEXT AND DETAILS:
+   - Text that looks garbled or makes no sense
+   - Logos or writing that's almost readable but not
+   - Repeated patterns that shouldn't repeat
+   - Objects that blend into each other
+
+4. LIGHTING AND SHADOWS:
+   - Shadows that don't match the light source
+   - Lighting that looks unnatural
+   - Reflections that don't make sense
+
+5. OVERALL LOOK:
+   - Too smooth/perfect (uncanny valley)
+   - Dream-like quality
+   - Oversaturated or weird colors
+
+Return your analysis in this EXACT JSON format:
 {
-    "has_synthid": true/false,
+    "is_ai_generated": true or false,
     "confidence": 0-100,
-    "is_ai_generated": true/false,
-    "indicators": ["list", "of", "signs"],
-    "explanation": "brief summary"
-}"""
+    "indicators": ["list", "of", "specific", "issues"],
+    "explanation": "brief summary of your finding"
+}
+
+Be conservative - only say it's AI if you're reasonably sure."""
     
-    def _parse_response(self, text: str) -> Dict:
+    def _parse_response(self, response_text: str) -> Dict:
+        """Parse Gemini's response into a clean dictionary"""
         try:
-            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            # Try to find JSON in the response
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            
             if json_match:
                 result = json.loads(json_match.group())
+                
                 return {
-                    'has_synthid': result.get('has_synthid', False),
-                    'confidence': result.get('confidence', 50),
                     'is_ai_generated': result.get('is_ai_generated', False),
+                    'confidence': result.get('confidence', 50),
                     'indicators': result.get('indicators', []),
-                    'explanation': result.get('explanation', 'No explanation'),
-                    'method': 'gemini_synthid'
+                    'explanation': result.get('explanation', 'No explanation provided'),
+                    'method': 'gemini_vision'
                 }
-        except:
-            pass
-        
-        return {
-            'has_synthid': False,
-            'confidence': 0,
-            'is_ai_generated': 'ai' in text.lower(),
-            'indicators': [],
-            'explanation': text[:200],
-            'method': 'fallback'
-        }
+            else:
+                # If no JSON found, create basic response from text
+                return {
+                    'is_ai_generated': 'ai' in response_text.lower() and 'not' not in response_text.lower(),
+                    'confidence': 60,
+                    'indicators': [],
+                    'explanation': response_text[:200],
+                    'method': 'gemini_vision_fallback'
+                }
+                
+        except Exception as e:
+            logger.error(f"Parse error: {e}")
+            return self._error_result(f"Failed to parse response: {response_text[:100]}")
     
-    def _generate_summary(self, ai_count: int, total: int) -> str:
-        if ai_count == 0:
-            return "No AI-generated images detected"
-        elif ai_count == total:
-            return "ALL images appear AI-generated!"
-        else:
-            return f"{ai_count}/{total} images appear AI-generated"
+    def _error_result(self, error_msg: str) -> Dict:
+        """Return a clean error result"""
+        return {
+            'is_ai_generated': False,
+            'confidence': 0,
+            'indicators': [],
+            'explanation': f"Error: {error_msg}",
+            'method': 'error',
+            'error': True
+        }
+
+
+# Simple function for command-line testing
+def main():
+    """Test the detector from command line"""
+    print("\n" + "="*60)
+    print("🔍 AI IMAGE DETECTOR USING GEMINI")
+    print("="*60)
+    
+    try:
+        detector = SynthIDDetector()
+        print("✅ Detector initialized\n")
+        
+        while True:
+            print("\n📸 Enter image URL (or 'quit' to exit):")
+            url = input("> ").strip()
+            
+            if url.lower() in ['quit', 'exit', 'q']:
+                break
+            
+            if not url:
+                continue
+            
+            print("\n🔍 Analyzing...")
+            result = detector.analyze_image(url)
+            
+            print("\n" + "📊 RESULTS")
+            print("-" * 40)
+            print(f"🤖 AI Generated: {'YES' if result['is_ai_generated'] else 'NO'}")
+            print(f"📊 Confidence: {result['confidence']}%")
+            print(f"\n📝 Explanation: {result['explanation']}")
+            
+            if result.get('indicators'):
+                print(f"\n🚩 Indicators:")
+                for i, indicator in enumerate(result['indicators'], 1):
+                    print(f"   {i}. {indicator}")
+            
+            print(f"\n⚙️ Method: {result['method']}")
+            print("-" * 40)
+            
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+
+
+if __name__ == "__main__":
+    main()
