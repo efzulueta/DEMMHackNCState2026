@@ -1,4 +1,4 @@
-<!doctype html>
+<!-- <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -11,6 +11,33 @@
     <button id="scan">Scan this listing</button>
 
     <div id="status" class="muted"></div>
+
+    <div id="score" class="score"></div>
+
+    <div id="signals"></div>
+
+    <details>
+      <summary>Raw extracted data</summary>
+      <pre id="raw"></pre>
+    </details>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html> -->
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Listing Inspector</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Listing Inspector</h1>
+    <button id="scan">Scan this listing</button>
+
+    <div id="status" class="muted">Ready to analyze listing with AI image detection, sentiment analysis, and CLIP photo verification</div>
 
     <div id="score" class="score"></div>
 
