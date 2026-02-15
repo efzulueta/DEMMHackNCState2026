@@ -1,4 +1,4 @@
-// popup.js - Complete version showing all AI detection results
+// popup.js - Fixed to match your backend data structure
 
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -7,8 +7,8 @@ async function getActiveTab() {
 
 function el(id) { return document.getElementById(id); }
 
-function render(resp, synthidResult) {
-  console.log("📊 Rendering results:", { resp, synthidResult });
+function render(resp, backendResult) {
+  console.log("📊 Rendering results:", { resp, backendResult });
   el("status").textContent = "✅ Done.";
   
   // Show original risk score
@@ -23,17 +23,24 @@ function render(resp, synthidResult) {
   const signalsDiv = el("signals");
   signalsDiv.innerHTML = '';
   
-  // Show SynthID/AI results if available
-  if (synthidResult && synthidResult.success && synthidResult.results?.synthid) {
-    const aiData = synthidResult.results.synthid;
+  // Show AI results if available
+  if (backendResult && backendResult.success && backendResult.results?.synthid) {
+    const aiData = backendResult.results.synthid;
     console.log("🤖 AI Data:", aiData);
+    
+    // Check if AI was detected - your backend uses 'is_ai_generated'
+    const isAIDetected = aiData.is_ai_generated === true;
+    const confidence = aiData.confidence || 0;
+    const indicators = aiData.indicators || [];
+    const explanation = aiData.explanation || 'No explanation provided';
+    const method = aiData.method || 'unknown';
     
     const resultDiv = document.createElement('div');
     resultDiv.style.margin = '15px 0';
     resultDiv.style.padding = '15px';
     resultDiv.style.borderRadius = '6px';
-    resultDiv.style.backgroundColor = aiData.is_ai_generated ? '#ffebee' : '#e8f5e8';
-    resultDiv.style.borderLeft = aiData.is_ai_generated ? '4px solid #f44336' : '4px solid #4caf50';
+    resultDiv.style.backgroundColor = isAIDetected ? '#ffebee' : '#e8f5e8';
+    resultDiv.style.borderLeft = isAIDetected ? '4px solid #f44336' : '4px solid #4caf50';
     resultDiv.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     
     // Main AI detection header
@@ -44,52 +51,52 @@ function render(resp, synthidResult) {
       </div>
       
       <div style="font-weight: bold; margin: 10px 0; font-size: 16px;">
-        ${aiData.is_ai_generated ? '⚠️ AI-GENERATED IMAGE DETECTED!' : '✅ No AI Generation Detected'}
+        ${isAIDetected ? '⚠️ AI-GENERATED IMAGE DETECTED!' : '✅ No AI Generation Detected'}
       </div>
       
       <div style="margin: 5px 0;">
-        <span style="background: ${aiData.is_ai_generated ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
-          Confidence: ${aiData.confidence || 0}%
+        <span style="background: ${isAIDetected ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
+          Confidence: ${confidence}%
         </span>
       </div>
     `;
     
     // Indicators section
-    if (aiData.indicators && aiData.indicators.length > 0) {
+    if (indicators.length > 0) {
       html += `
         <div style="margin-top: 15px;">
           <strong style="color: #d32f2f;">🚩 AI Indicators Found:</strong>
           <ul style="margin: 5px 0 0 20px;">
-            ${aiData.indicators.map(ind => `<li style="font-size: 12px; margin: 3px 0;">${ind}</li>`).join('')}
+            ${indicators.map(ind => `<li style="font-size: 12px; margin: 3px 0;">${ind}</li>`).join('')}
           </ul>
         </div>
       `;
     }
     
     // Explanation section
-    if (aiData.explanation) {
+    if (explanation) {
       html += `
         <div style="margin-top: 15px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 4px;">
           <strong>📝 Detailed Analysis:</strong>
           <div style="margin-top: 5px; font-size: 12px; color: #555; line-height: 1.5;">
-            ${aiData.explanation}
+            ${explanation}
           </div>
         </div>
       `;
     }
     
-    // Image stats
+    // Image stats and method
     html += `
       <div style="margin-top: 10px; font-size: 11px; color: #999; display: flex; justify-content: space-between;">
         <span>📸 Images analyzed: ${aiData.images_analyzed || 0}/${aiData.total_images || 0}</span>
-        <span>🔍 Method: ${aiData.method || 'unknown'}</span>
+        <span>🔍 Method: ${method}</span>
       </div>
     `;
     
     resultDiv.innerHTML = html;
     signalsDiv.appendChild(resultDiv);
     
-  } else if (synthidResult && !synthidResult.success) {
+  } else if (backendResult && !backendResult.success) {
     // Show error message
     const errorDiv = document.createElement('div');
     errorDiv.style.margin = '15px 0';
@@ -103,7 +110,7 @@ function render(resp, synthidResult) {
         <strong>AI Detection Unavailable</strong>
       </div>
       <div style="margin-top: 5px; font-size: 12px; color: #666;">
-        ${synthidResult.error || 'Could not analyze images'}
+        ${backendResult.error || 'Could not analyze images'}
       </div>
     `;
     signalsDiv.appendChild(errorDiv);
@@ -145,7 +152,7 @@ function render(resp, synthidResult) {
   // Show raw data in details section
   el("raw").textContent = JSON.stringify({
     seller_data: resp,
-    ai_detection: synthidResult
+    ai_detection: backendResult
   }, null, 2);
 }
 
@@ -178,7 +185,7 @@ el("scan").addEventListener("click", async () => {
     el("status").textContent = "🔍 Analyzing images with AI...";
     
     try {
-      // Call your SynthID backend
+      // Call your backend
       const YOUR_BACKEND_URL = 'http://localhost:5000/analyze';
       
       console.log("📡 Sending to backend:", YOUR_BACKEND_URL);
@@ -201,11 +208,11 @@ el("scan").addEventListener("click", async () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const synthidResult = await response.json();
-      console.log("📊 Backend result:", synthidResult);
+      const backendResult = await response.json();
+      console.log("📊 Backend result:", backendResult);
       
       // Render both results
-      render(resp, synthidResult);
+      render(resp, backendResult);
       
     } catch (error) {
       console.error("❌ Error calling backend:", error);
@@ -216,7 +223,7 @@ el("scan").addEventListener("click", async () => {
   });
 });
 
-// Add test button functionality (optional)
+// Log when popup loads
 document.addEventListener('DOMContentLoaded', () => {
   console.log("🚀 Extension popup loaded");
 });
