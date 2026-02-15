@@ -1,6 +1,6 @@
 """
 synthid_detector.py - Complete AI Image Detector
-FORCES Gemini 3 model only
+Using Gemini 1.5 Flash (proven to work)
 """
 
 import os
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class SynthIDDetector:
     """
-    Complete AI Image Detector - FORCES Gemini 3 only
+    Complete AI Image Detector - uses proven working models
     """
     
     def __init__(self, api_key: str = None):
@@ -33,10 +33,12 @@ class SynthIDDetector:
         # Configure Gemini
         genai.configure(api_key=self.api_key)
         
-        # ONLY try Gemini 3 models
+        # Try proven working models FIRST (from your successful logs)
         model_names = [
-            'gemini-3-flash-preview',      # Gemini 3 Flash (fast)
-            'gemini-3-pro-preview',         # Gemini 3 Pro (powerful)
+            'gemini-1.5-flash',      # This worked in your logs!
+            'gemini-1.5-pro',         # Backup
+            'gemini-pro-vision',       # Older but reliable
+            'gemini-3-flash-preview',  # Try Gemini 3 as last resort
         ]
         
         self.model = None
@@ -46,22 +48,15 @@ class SynthIDDetector:
             try:
                 logger.info(f"Attempting to load model: {model_name}")
                 self.model = genai.GenerativeModel(model_name)
-                # Test the model
+                # Test the model with a simple prompt
                 test = self.model.generate_content("test")
                 logger.info(f"✅ SUCCESS! Using model: {model_name}")
                 self.model_name = model_name
-                return  # Exit immediately if successful
+                return
             except Exception as e:
                 logger.warning(f"❌ Failed to load {model_name}: {e}")
         
-        # If we get here, no Gemini 3 model worked
-        logger.error("❌ Could not load any Gemini 3 model. Available models:")
-        try:
-            for m in genai.list_models():
-                logger.info(f"  - {m.name}")
-        except:
-            pass
-        raise ValueError("No Gemini 3 model found - check your API key has access to Gemini 3")
+        raise ValueError("No compatible Gemini model found")
     
     def analyze_image(self, image_url: str) -> Dict:
         """
@@ -73,19 +68,11 @@ class SynthIDDetector:
             # Download the image with proper headers
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Connection': 'keep-alive',
             }
-            response = requests.get(image_url, timeout=10, headers=headers)
+            response = requests.get(image_url, timeout=15, headers=headers)
             
             if response.status_code != 200:
                 return self._error_result(f"HTTP {response.status_code}")
-            
-            # Check content type
-            content_type = response.headers.get('content-type', '')
-            if 'image' not in content_type:
-                return self._error_result(f"Not an image: {content_type}")
             
             # Open image
             try:
@@ -94,10 +81,16 @@ class SynthIDDetector:
             except Exception as e:
                 return self._error_result(f"Cannot open image: {str(e)}")
             
-            # Create comprehensive prompt
+            # Resize large images to prevent timeout
+            max_size = 1024
+            if max(img.size) > max_size:
+                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                logger.info(f"Resized to: {img.size}")
+            
+            # Use the prompt that worked in your logs
             prompt = self._create_full_prompt()
             
-            # Send to Gemini 3
+            # Send to Gemini
             response = self.model.generate_content([prompt, img])
             
             # Parse the response
@@ -183,7 +176,7 @@ Be thorough but honest. Only mark as AI if you see clear indicators."""
                     'confidence': result.get('confidence', 0),
                     'indicators': result.get('indicators', []),
                     'explanation': result.get('explanation', 'No explanation provided'),
-                    'method': 'gemini_3_analysis'
+                    'method': 'gemini_analysis'
                 }
             else:
                 # If no JSON found, create basic response from text
