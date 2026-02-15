@@ -339,6 +339,7 @@ import json
 # Load SynthID detector
 from analyzers.synthid_detector import SynthIDDetector
 from review_sentiment_analyzer import ReviewSentimentAnalyzer
+from listing_risk_calculator import ListingRiskCalculator
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -363,6 +364,14 @@ except Exception as e:
     logger.error(f"❌ Failed to initialize sentiment analyzer: {e}")
     sentiment_analyzer = None
 
+# Initialize risk calculator
+try:
+    risk_calculator = ListingRiskCalculator()
+    logger.info("✅ Risk calculator initialized successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize risk calculator: {e}")
+    risk_calculator = None
+
 # Placeholders for future analyzers
 image_comparator = None
 duplicate_detector = None
@@ -384,24 +393,6 @@ def analyze():
             logger.error("❌ No JSON data received")
             return jsonify({'success': False, 'error': 'No data received'}), 400
         
-        # =====================================================================
-        # SAVE ENTIRE REQUEST TO JSON FILE
-        # =====================================================================
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"request_{timestamp}.json"
-        
-        try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            logger.info(f"💾 Full request saved to: {filename}")
-            print(f"\n💾 💾 💾 SAVED TO: {filename} 💾 💾 💾\n")
-        except Exception as e:
-            logger.error(f"❌ Failed to save request file: {e}")
-            
-        raw = request.get_data(as_text=True)  # raw body Flask received
-        logger.info("📦 RAW BODY (first 2000 chars): %s", raw[:2000])
-
-
         logger.info(f"📥 Analyzing: {data.get('url', 'unknown')}")
 
         # Show what arrived (keys + samples)
@@ -456,12 +447,6 @@ def analyze():
                 logger.info(f"   Neutral: {sentiment_results['sentiment_counts']['neutral']} ({sentiment_results['sentiment_percentages']['neutral']}%)")
                 logger.info(f"   Average sentiment: {sentiment_results['average_sentiment']}")
                 logger.info(f"   Suspicious reviews: {sentiment_results['sentiment_rating_mismatch_count']}")
-                
-                # Save sentiment results to separate file
-                sentiment_file = filename.replace('.json', '_sentiment.json')
-                with open(sentiment_file, 'w', encoding='utf-8') as f:
-                    json.dump(sentiment_results, f, indent=2, ensure_ascii=False)
-                logger.info(f"💾 Sentiment results saved to: {sentiment_file}")
                 
             except Exception as e:
                 logger.error(f"❌ Error during sentiment analysis: {e}")
@@ -574,20 +559,48 @@ def analyze():
             if not synthid:
                 logger.warning("⚠️ SynthID detector not initialized")
         
-        # Calculate risk based on SynthID results
-        if synthid_results.get('any_ai'):
-            confidence = synthid_results.get("results", [{}])[0].get("confidence", 0)
-            risk = {
-                'score': 75,
-                'level': 'HIGH',
-                'message': f'AI-generated images detected ({confidence}% confidence)'
-            }
+        # =====================================================================
+        # CALCULATE COMPREHENSIVE RISK SCORE
+        # =====================================================================
+        risk = {'score': 0, 'level': 'UNKNOWN', 'message': 'Unable to calculate risk'}
+        
+        if risk_calculator:
+            logger.info("🎯 Calculating comprehensive risk score...")
+            try:
+                # Prepare data for risk calculator
+                risk_data = {
+                    'data': data.get('data', {}),
+                    'results': {
+                        'sentiment': sentiment_results,
+                        'synthid': synthid_results
+                    }
+                }
+                
+                risk_assessment = risk_calculator.calculate_risk(risk_data)
+                
+                risk = {
+                    'score': risk_assessment['score'],
+                    'level': risk_assessment['level'],
+                    'color': risk_assessment['color'],
+                    'message': risk_assessment['recommendation'],
+                    'warnings': risk_assessment['warnings'],
+                    'breakdown': risk_assessment['breakdown']
+                }
+                
+                logger.info(f"📊 RISK ASSESSMENT:")
+                logger.info(f"   Score: {risk['score']}/100")
+                logger.info(f"   Level: {risk['level']}")
+                logger.info(f"   Recommendation: {risk['message']}")
+                if risk['warnings']:
+                    logger.info(f"   Warnings: {len(risk['warnings'])}")
+                    for w in risk['warnings'][:5]:  # Show first 5
+                        logger.info(f"      {w}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error calculating risk: {e}")
+                logger.error(traceback.format_exc())
         else:
-            risk = {
-                'score': 25,
-                'level': 'LOW',
-                'message': 'No AI images detected'
-            }
+            logger.warning("⚠️ Risk calculator not initialized")
         
         logger.info(f"📊 Final Risk level: {risk['level']} - {risk['message']}")
         
