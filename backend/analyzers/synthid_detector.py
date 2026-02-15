@@ -1,7 +1,6 @@
 """
 synthid_detector.py - Pure SynthID Watermark Detector
-Only checks if images contain Google's SynthID watermark
-No general AI detection, just SynthID!
+Using Gemini 3 API
 """
 
 import os
@@ -21,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 class SynthIDDetector:
     """
-    ONLY detects SynthID watermarks in images using Gemini
-    Does NOT do general AI detection - just looks for SynthID!
+    ONLY detects SynthID watermarks in images using Gemini 3
     """
     
     def __init__(self, api_key: str = None):
@@ -35,48 +33,48 @@ class SynthIDDetector:
         # Configure Gemini
         genai.configure(api_key=self.api_key)
         
-        # Try different model names
+        # Gemini 3 model names [citation:4][citation:8]
         model_names = [
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-pro-vision',
-            'gemini-1.0-pro-vision',
+            'gemini-3-flash-preview',      # Fast version - RECOMMENDED for images
+            'gemini-3-pro-preview',         # Powerful version - fallback
+            'gemini-1.5-flash',              # Legacy fallback
+            'gemini-1.5-pro',                 # Legacy fallback
+            'gemini-pro-vision',               # Older fallback
         ]
         
         self.model = None
+        self.model_name = None
+        
         for model_name in model_names:
             try:
                 logger.info(f"Attempting to load model: {model_name}")
                 self.model = genai.GenerativeModel(model_name)
-                logger.info(f"✅ Successfully loaded model: {model_name}")
+                # Test the model with a simple prompt
+                test = self.model.generate_content("test")
+                logger.info(f"✅ SUCCESS! Using model: {model_name}")
+                self.model_name = model_name
                 break
             except Exception as e:
                 logger.warning(f"❌ Failed to load {model_name}: {e}")
         
         if not self.model:
-            logger.error("❌ Could not load any vision model")
+            # List available models for debugging
+            logger.error("❌ Could not load any vision model. Available models:")
+            try:
+                for m in genai.list_models():
+                    logger.info(f"  - {m.name}")
+            except:
+                pass
             raise ValueError("No compatible Gemini vision model found")
     
     def analyze_image(self, image_url: str) -> Dict:
         """
-        ONLY check for SynthID watermark - nothing else!
-        
-        Args:
-            image_url: URL of the image to analyze
-            
-        Returns:
-            dict: {
-                'has_synthid': bool,        # True if SynthID watermark found
-                'confidence': int,           # 0-100 confidence score
-                'explanation': str,          # What Gemini found
-                'watermark_location': str,   # Where in image (if found)
-                'method': str                 # Always 'synthid_only'
-            }
+        ONLY check for SynthID watermark using Gemini 3
         """
         logger.info(f"🔍 Checking for SynthID watermark: {image_url[:50]}...")
         
         try:
-            # Download the image with proper headers
+            # Download the image
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
@@ -84,11 +82,6 @@ class SynthIDDetector:
             
             if response.status_code != 200:
                 return self._error_result(f"HTTP {response.status_code}")
-            
-            # Check content type
-            content_type = response.headers.get('content-type', '')
-            if 'image' not in content_type:
-                return self._error_result(f"Not an image: {content_type}")
             
             # Open image
             try:
@@ -100,16 +93,19 @@ class SynthIDDetector:
             # Create SynthID-only prompt
             prompt = self._create_synthid_prompt()
             
-            # Send to Gemini
+            # Send to Gemini 3
             response = self.model.generate_content([prompt, img])
             
             # Parse the response
             result = self._parse_response(response.text)
             
+            # Add model info
+            result['model_used'] = self.model_name
+            
             if result['has_synthid']:
-                logger.info(f"✅ SynthID watermark DETECTED! Confidence: {result['confidence']}%")
+                logger.info(f"✅ SynthID DETECTED! Confidence: {result['confidence']}%")
             else:
-                logger.info(f"❌ No SynthID watermark found")
+                logger.info(f"❌ No SynthID found")
             
             return result
             
@@ -119,22 +115,17 @@ class SynthIDDetector:
     
     def _create_synthid_prompt(self) -> str:
         """
-        Pure SynthID prompt - ONLY asks about SynthID watermark
+        Pure SynthID prompt for Gemini 3
         """
         return """You are an expert in Google DeepMind's SynthID technology.
 
-SynthID is Google's invisible watermarking system that embeds imperceptible watermarks into AI-generated images.
+SynthID is Google's invisible watermarking system that embeds imperceptible watermarks into AI-generated images. It was developed by Google DeepMind.
 
 Look at this image and answer ONLY these questions:
 
 1. Does this image contain a SynthID watermark? (Google's invisible AI watermark)
 2. If yes, where in the image is it located?
-3. How confident are you?
-
-Do NOT analyze if the image is AI-generated or not.
-Do NOT look for other AI artifacts.
-Do NOT comment on image quality or content.
-ONLY check for SynthID watermarks.
+3. How confident are you on a scale of 0-100?
 
 Return your analysis in this EXACT JSON format:
 {
@@ -144,17 +135,16 @@ Return your analysis in this EXACT JSON format:
     "explanation": "brief explanation of what you found"
 }
 
-Be conservative - only say true if you're reasonably sure you detect a SynthID watermark."""
+Be very conservative. Only say true if you're absolutely certain you detect a SynthID watermark. If you're not sure, return false."""
     
     def _parse_response(self, response_text: str) -> Dict:
-        """Parse Gemini's response into a clean dictionary"""
+        """Parse Gemini's response"""
         try:
             # Try to find JSON in the response
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             
             if json_match:
                 result = json.loads(json_match.group())
-                
                 return {
                     'has_synthid': result.get('has_synthid', False),
                     'confidence': result.get('confidence', 0),
@@ -163,14 +153,12 @@ Be conservative - only say true if you're reasonably sure you detect a SynthID w
                     'method': 'synthid_only'
                 }
             else:
-                # If no JSON found, create basic response from text
-                has_synthid = 'synthid' in response_text.lower() and 'detected' in response_text.lower()
                 return {
-                    'has_synthid': has_synthid,
-                    'confidence': 50 if has_synthid else 0,
+                    'has_synthid': False,
+                    'confidence': 0,
                     'watermark_location': 'unknown',
-                    'explanation': response_text[:200],
-                    'method': 'synthid_only_fallback'
+                    'explanation': f"Could not parse response: {response_text[:100]}",
+                    'method': 'parse_error'
                 }
                 
         except Exception as e:
@@ -193,14 +181,13 @@ Be conservative - only say true if you're reasonably sure you detect a SynthID w
 def main():
     """Test the detector from command line"""
     print("\n" + "="*60)
-    print("🔍 SYNTHID WATERMARK DETECTOR")
+    print("🔍 SYNTHID WATERMARK DETECTOR - GEMINI 3")
     print("="*60)
-    print("Only checks for Google's SynthID watermark")
-    print("No general AI detection\n")
+    print("Only checks for Google's SynthID watermark\n")
     
     try:
         detector = SynthIDDetector()
-        print("✅ Detector initialized\n")
+        print(f"✅ Detector initialized with model: {detector.model_name}\n")
         
         while True:
             print("\n📸 Enter image URL (or 'quit' to exit):")
@@ -222,6 +209,7 @@ def main():
             print(f"📍 Location: {result['watermark_location']}")
             print(f"\n📝 Explanation: {result['explanation']}")
             print(f"\n⚙️ Method: {result['method']}")
+            print(f"🤖 Model: {result.get('model_used', 'unknown')}")
             print("-" * 40)
             
     except Exception as e:
