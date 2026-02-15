@@ -1,4 +1,4 @@
-// popup.js - Fixed to match your backend data structure
+// popup.js - Fixed to match your EXACT backend structure
 
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -8,7 +8,7 @@ async function getActiveTab() {
 function el(id) { return document.getElementById(id); }
 
 function render(resp, backendResult) {
-  console.log("📊 Rendering results:", { resp, backendResult });
+  console.log("📊 Rendering results:", { seller: resp, ai: backendResult });
   el("status").textContent = "✅ Done.";
   
   // Show original risk score
@@ -23,17 +23,21 @@ function render(resp, backendResult) {
   const signalsDiv = el("signals");
   signalsDiv.innerHTML = '';
   
-  // Show AI results if available
+  // Check if we have AI results - based on your logs, the data is in results.synthid
   if (backendResult && backendResult.success && backendResult.results?.synthid) {
     const aiData = backendResult.results.synthid;
-    console.log("🤖 AI Data:", aiData);
+    console.log("🤖 AI Data from backend:", aiData);
     
-    // Check if AI was detected - your backend uses 'is_ai_generated'
+    // Extract values - using the EXACT field names from your logs
     const isAIDetected = aiData.is_ai_generated === true;
     const confidence = aiData.confidence || 0;
     const indicators = aiData.indicators || [];
     const explanation = aiData.explanation || 'No explanation provided';
-    const method = aiData.method || 'unknown';
+    const method = aiData.method || 'full_analysis';
+    
+    // Image stats from the main response
+    const imagesAnalyzed = aiData.images_analyzed || 1;
+    const totalImages = aiData.total_images || 5;
     
     const resultDiv = document.createElement('div');
     resultDiv.style.margin = '15px 0';
@@ -74,7 +78,7 @@ function render(resp, backendResult) {
     }
     
     // Explanation section
-    if (explanation) {
+    if (explanation && explanation !== 'No explanation provided') {
       html += `
         <div style="margin-top: 15px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 4px;">
           <strong>📝 Detailed Analysis:</strong>
@@ -88,7 +92,7 @@ function render(resp, backendResult) {
     // Image stats and method
     html += `
       <div style="margin-top: 10px; font-size: 11px; color: #999; display: flex; justify-content: space-between;">
-        <span>📸 Images analyzed: ${aiData.images_analyzed || 0}/${aiData.total_images || 0}</span>
+        <span>📸 Images analyzed: ${imagesAnalyzed}/${totalImages}</span>
         <span>🔍 Method: ${method}</span>
       </div>
     `;
@@ -96,32 +100,13 @@ function render(resp, backendResult) {
     resultDiv.innerHTML = html;
     signalsDiv.appendChild(resultDiv);
     
-  } else if (backendResult && !backendResult.success) {
-    // Show error message
-    const errorDiv = document.createElement('div');
-    errorDiv.style.margin = '15px 0';
-    errorDiv.style.padding = '15px';
-    errorDiv.style.borderRadius = '6px';
-    errorDiv.style.backgroundColor = '#fff3e0';
-    errorDiv.style.borderLeft = '4px solid #ff9800';
-    errorDiv.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <span style="font-size: 20px; margin-right: 8px;">⚠️</span>
-        <strong>AI Detection Unavailable</strong>
-      </div>
-      <div style="margin-top: 5px; font-size: 12px; color: #666;">
-        ${backendResult.error || 'Could not analyze images'}
-      </div>
-    `;
-    signalsDiv.appendChild(errorDiv);
+    // Add a separator after AI results
+    const separator = document.createElement('hr');
+    separator.style.margin = '15px 0';
+    separator.style.border = 'none';
+    separator.style.borderTop = '1px solid #ddd';
+    signalsDiv.appendChild(separator);
   }
-  
-  // Add separator
-  const separator = document.createElement('hr');
-  separator.style.margin = '15px 0';
-  separator.style.border = 'none';
-  separator.style.borderTop = '1px solid #ddd';
-  signalsDiv.appendChild(separator);
   
   // Show original seller signals
   if (resp.report?.signals && resp.report.signals.length > 0) {
@@ -189,6 +174,11 @@ el("scan").addEventListener("click", async () => {
       const YOUR_BACKEND_URL = 'http://localhost:5000/analyze';
       
       console.log("📡 Sending to backend:", YOUR_BACKEND_URL);
+      console.log("📤 Payload:", {
+        url: resp.url,
+        data: resp.data,
+        report: resp.report
+      });
       
       const response = await fetch(YOUR_BACKEND_URL, {
         method: 'POST',
@@ -209,7 +199,7 @@ el("scan").addEventListener("click", async () => {
       }
       
       const backendResult = await response.json();
-      console.log("📊 Backend result:", backendResult);
+      console.log("📊 Full backend result:", backendResult);
       
       // Render both results
       render(resp, backendResult);
