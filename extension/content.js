@@ -1,4 +1,4 @@
-// content.js — COMPLETE VERSION with Review Window Support
+// content.js — COMPLETE VERSION
 console.log("[content.js] Loaded - COMPLETE VERSION");
 
 function text(el) {
@@ -228,7 +228,6 @@ function computeRisk(data) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log("[content.js] Received message:", msg.type);
   
-  // Handle SCAN_LISTING
   if (msg?.type === "SCAN_LISTING") {
     console.log("[content.js] Starting scan...");
     
@@ -248,70 +247,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
   }
   
-  // Handle OPEN_REVIEWS - THIS OPENS THE REVIEW WINDOW
-  if (msg?.type === "OPEN_REVIEWS") {
-    console.log("[content.js] 🔴 FORCING review window to open");
-    
-    // Method 1: Find and click reviews tab
-    const reviewTabSelectors = [
-      'a[href*="reviews"]',
-      'button[data-review-tab]',
-      '[data-appears-component-name="review_tab"]',
-      '.reviews-tab',
-      'button:contains("Reviews")',
-      'a:contains("ratings")',
-      'button:contains("ratings")',
-      '[data-review-region]',
-      'a[data-review-link]'
-    ];
-    
-    let clicked = false;
-    
-    for (const selector of reviewTabSelectors) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        for (const el of elements) {
-          console.log(`[content.js] Trying to click: ${selector}`);
-          el.click();
-          clicked = true;
-          break;
-        }
-        if (clicked) break;
-      } catch (e) {}
-    }
-    
-    // Method 2: Try to find by text content
-    if (!clicked) {
-      console.log("[content.js] Trying to find by text content...");
-      const allElements = document.querySelectorAll('a, button, div[role="button"], span[role="button"]');
-      for (const el of allElements) {
-        const text = el.textContent.toLowerCase();
-        if (text.includes('review') || text.includes('rating') || text.includes('feedback')) {
-          try {
-            console.log(`[content.js] Clicking element with text: ${text}`);
-            el.click();
-            clicked = true;
-            break;
-          } catch (e) {}
-        }
-      }
-    }
-    
-    // Method 3: Try to scroll to reviews section
-    if (!clicked) {
-      console.log("[content.js] Trying to scroll to reviews section...");
-      const reviewsSection = document.querySelector('#reviews, .reviews, [data-section="reviews"], .review-section');
-      if (reviewsSection) {
-        reviewsSection.scrollIntoView({ behavior: 'smooth' });
-        clicked = true;
-      }
-    }
-    
-    console.log(`[content.js] Review window ${clicked ? 'opened' : 'not found'}`);
-    sendResponse({ opened: clicked });
-  }
-  
-  return true; // Keep message channel open for async response
+  return true;
 });
 
 console.log("[content.js] Message listener registered");
