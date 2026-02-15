@@ -1,5 +1,5 @@
-// popup.js — FINAL WORKING VERSION
-console.log("[Listing Inspector] popup.js loaded - FINAL VERSION");
+// popup.js — COMPLETE VERSION - Scan First, Then Open Reviews
+console.log("[Listing Inspector] popup.js loaded - COMPLETE VERSION");
 
 const BACKEND_URL = 'http://localhost:5000/analyze';
 
@@ -29,22 +29,58 @@ function render(resp, synthidResult) {
     const isAIDetected = aiData.any_ai || aiData.is_ai_generated || false;
     const confidence = aiData.results?.[0]?.confidence || aiData.confidence || 0;
     const explanation = aiData.results?.[0]?.explanation || aiData.explanation || '';
+    const indicators = aiData.results?.[0]?.indicators || aiData.indicators || [];
+    
+    let indicatorsHtml = '';
+    if (indicators.length > 0) {
+      indicatorsHtml = '<ul style="margin-top: 5px; font-size: 11px;">';
+      indicators.forEach(ind => {
+        indicatorsHtml += `<li>${ind}</li>`;
+      });
+      indicatorsHtml += '</ul>';
+    }
     
     html += `
-      <div style="margin: 10px 0; padding: 10px; border-radius: 4px; background: ${isAIDetected ? '#ffebee' : '#e8f5e8'}; border-left: 4px solid ${isAIDetected ? '#f44336' : '#4caf50'};">
-        <strong>🤖 AI Image Detection:</strong><br>
-        ${isAIDetected ? '⚠️ AI DETECTED' : '✅ No AI detected'}<br>
-        <small>Confidence: ${confidence}%</small>
-        ${explanation ? `<br><small>${explanation.substring(0, 100)}...</small>` : ''}
+      <div style="margin: 15px 0; padding: 15px; border-radius: 6px; background: ${isAIDetected ? '#ffebee' : '#e8f5e8'}; border-left: 4px solid ${isAIDetected ? '#f44336' : '#4caf50'}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 20px; margin-right: 8px;">🤖</span>
+          <strong style="font-size: 16px;">AI Image Analysis</strong>
+        </div>
+        
+        <div style="font-weight: bold; margin: 10px 0; font-size: 16px;">
+          ${isAIDetected ? '⚠️ AI-GENERATED IMAGE DETECTED!' : '✅ No AI Generation Detected'}
+        </div>
+        
+        <div style="margin: 5px 0;">
+          <span style="background: ${isAIDetected ? '#ffcdd2' : '#c8e6c9'}; padding: 3px 8px; border-radius: 12px; font-size: 12px;">
+            Confidence: ${confidence}%
+          </span>
+        </div>
+        
+        ${indicatorsHtml}
+        
+        ${explanation ? `
+          <div style="margin-top: 10px; font-size: 12px; color: #555; background: rgba(255,255,255,0.5); padding: 8px; border-radius: 4px;">
+            <strong>📝 Analysis:</strong><br>
+            ${explanation}
+          </div>
+        ` : ''}
+        
+        <div style="margin-top: 10px; font-size: 11px; color: #999;">
+          📸 Images: ${aiData.images_analyzed || 1}/${aiData.total_images || resp.data?.images?.length || 0}
+        </div>
       </div>
+      <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
     `;
   }
 
   // Add seller signals
   if (resp.report?.signals?.length) {
-    html += '<ul>';
-    resp.report.signals.forEach(s => html += `<li>${s}</li>`);
+    html += '<strong>📋 Seller Signals:</strong><ul style="margin: 8px 0 0 20px;">';
+    resp.report.signals.forEach(s => html += `<li style="margin: 4px 0; font-size: 12px;">${s}</li>`);
     html += '</ul>';
+  } else {
+    html += '<div style="color: #999; font-style: italic; font-size: 12px;">No seller signals detected</div>';
   }
 
   if (signalsEl) signalsEl.innerHTML = html;
@@ -60,7 +96,7 @@ async function runScan() {
   const rawEl = el("raw");
 
   if (statusEl) statusEl.textContent = "Step 1: Getting page data...";
-  if (signalsEl) signalsEl.innerHTML = "Loading...";
+  if (signalsEl) signalsEl.innerHTML = '<div style="color: #666; font-style: italic;">Loading...</div>';
   if (scoreEl) scoreEl.innerHTML = "";
   if (rawEl) rawEl.textContent = "";
 
@@ -73,11 +109,17 @@ async function runScan() {
     return;
   }
 
-  // Get data from content.js
+  // Get data from content.js - SCAN FIRST
+  console.log("[Listing Inspector] Getting data from content.js...");
+  
   chrome.tabs.sendMessage(tab.id, { type: "SCAN_LISTING" }, async (resp) => {
     if (chrome.runtime.lastError) {
       console.error("[Listing Inspector] Error:", chrome.runtime.lastError);
       if (statusEl) statusEl.textContent = "Error: " + chrome.runtime.lastError.message;
+      
+      // Even if scan fails, try to open reviews
+      console.log("[Listing Inspector] Attempting to open reviews anyway...");
+      chrome.tabs.sendMessage(tab.id, { type: "OPEN_REVIEWS" }, () => {});
       return;
     }
 
@@ -85,14 +127,18 @@ async function runScan() {
     
     if (!resp?.ok) {
       if (statusEl) statusEl.textContent = "Error: Could not scan page";
+      
+      // Even if scan fails, try to open reviews
+      console.log("[Listing Inspector] Attempting to open reviews anyway...");
+      chrome.tabs.sendMessage(tab.id, { type: "OPEN_REVIEWS" }, () => {});
       return;
     }
 
     console.log("[Listing Inspector] ✅ Got page data with", resp.data?.images?.length, "images");
     
-    if (statusEl) statusEl.textContent = `Step 2: Analyzing ${resp.data?.images?.length || 0} images...`;
+    if (statusEl) statusEl.textContent = `Step 2: Analyzing ${resp.data?.images?.length || 0} images with AI...`;
     
-    // CALL THE BACKEND - THIS IS THE CRITICAL PART
+    // Call the backend
     try {
       console.log("[Listing Inspector] 📡 Sending to backend:", BACKEND_URL);
       
@@ -119,14 +165,33 @@ async function runScan() {
       const backendResult = await response.json();
       console.log("[Listing Inspector] ✅ Backend result:", backendResult);
       
+      // Show results
       if (statusEl) statusEl.textContent = "Complete!";
       render(resp, backendResult);
       
     } catch (error) {
       console.error("[Listing Inspector] ❌ Backend error:", error);
-      if (statusEl) statusEl.textContent = "Error: Backend not reachable - is python app.py running?";
+      if (statusEl) statusEl.textContent = "AI analysis failed, but opening reviews...";
       render(resp, null);
     }
+    
+    // FINALLY - ALWAYS open the review window at the end
+    console.log("[Listing Inspector] 🔴 MANDATORY: Opening review window...");
+    
+    // Try multiple times to ensure it opens
+    for (let i = 0; i < 3; i++) {
+      chrome.tabs.sendMessage(tab.id, { type: "OPEN_REVIEWS" }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log(`[Listing Inspector] Attempt ${i+1} failed:`, chrome.runtime.lastError.message);
+        } else {
+          console.log(`[Listing Inspector] ✅ Review window opened on attempt ${i+1}`);
+        }
+      });
+      // Wait between attempts
+      await new Promise(r => setTimeout(r, 500));
+    }
+    
+    console.log("[Listing Inspector] 🔴 Review window process complete");
   });
 }
 
