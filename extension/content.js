@@ -1,5 +1,5 @@
-// content.js — COMPLETE VERSION
-console.log("[content.js] Loaded - COMPLETE VERSION");
+// content.js — COMPLETE WORKING VERSION for YOUR branch
+console.log("[content.js] Loaded - WORKING VERSION");
 
 function text(el) {
   return el ? el.textContent.trim() : null;
