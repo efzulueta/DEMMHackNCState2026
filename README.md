@@ -1,4 +1,4 @@
-# DEMMHackNCState2026
+# DEMM Listing Inspector
 
 A browser extension that protects buyers from AI-generated product scams on Etsy by analyzing images, seller history, reviews, and pricing patterns.
 
