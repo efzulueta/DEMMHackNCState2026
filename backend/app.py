@@ -50,6 +50,20 @@ def analyze():
         if not data:
             logger.error("❌ No JSON data received")
             return jsonify({'success': False, 'error': 'No data received'}), 400
+        
+        # =====================================================================
+        # SAVE ENTIRE REQUEST TO JSON FILE
+        # =====================================================================
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"request_{timestamp}.json"
+        
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logger.info(f"💾 Full request saved to: {filename}")
+            print(f"\n💾 💾 💾 SAVED TO: {filename} 💾 💾 💾\n")
+        except Exception as e:
+            logger.error(f"❌ Failed to save request file: {e}")
             
         raw = request.get_data(as_text=True)  # raw body Flask received
         logger.info("📦 RAW BODY (first 2000 chars): %s", raw[:2000])
@@ -81,6 +95,19 @@ def analyze():
 
         logger.info(f"📝 Reviews received: {len(reviews)}")
         logger.info("📝 Review sample: %s", json.dumps(reviews[:1], ensure_ascii=False)[:800])
+
+        # Extract review images
+        review_images = []
+        reviews_with_photos = 0
+        for review in reviews:
+            review_imgs = review.get('images', [])
+            if review_imgs and len(review_imgs) > 0:
+                reviews_with_photos += 1
+                review_images.extend(review_imgs)
+        
+        logger.info(f"📸 Review images: {len(review_images)} total from {reviews_with_photos} reviews")
+        if review_images:
+            logger.info(f"📸 First review image: {review_images[0][:80]}...")
 
         # Extra blocks your extension sends
         logger.info("📦 reviewFetch: %s", json.dumps(data.get("reviewFetch"), ensure_ascii=False)[:800])
