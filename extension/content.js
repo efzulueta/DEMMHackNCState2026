@@ -1,4 +1,5 @@
-console.log("[Listing Inspector] content.js loaded on", location.href);
+// content.js — COMPLETE VERSION with OPEN_REVIEWS handler
+console.log("[content.js] Loaded on", location.href);
 
 /* ---------------------------
    Helpers
@@ -209,29 +210,7 @@ function extractFromDom() {
   const sellerName = text(shopNameEl);
 
   const salesEl = Array.from(document.querySelectorAll("span,div"))
-    .find(n => {
-      const txt = n.textContent || "";
-      // Must contain "sales" and a number
-      if (!/sales/i.test(txt) || !/\d/.test(txt)) return false;
-      // Exclude tooltips and long explanatory text
-      if (txt.length > 30) return false;
-      // Exclude "months" (catches "6 months" from tooltip)
-      if (/months?/i.test(txt)) return false;
-      // Exclude "volume" (catches "sales volume" from tooltip)
-      if (/volume/i.test(txt)) return false;
-      // Must be reasonably short
-      return txt.trim().length < 30;
-    });
-  
-  // Debug logging
-  if (salesEl) {
-    console.log("[EXT] Sales element found:", salesEl);
-    console.log("[EXT] Sales text:", salesEl.textContent);
-    console.log("[EXT] Sales parsed:", parseCompactNumber(salesEl.textContent));
-  } else {
-    console.log("[EXT] No sales element found");
-  }
-  
+    .find(n => /sales/i.test(n.textContent) && /\d/.test(n.textContent) && n.textContent.length < 120);
   const salesCount = parseCompactNumber(salesEl?.textContent || null);
 
   // Seller age often appears as "X years on Etsy" or "X months on Etsy"
@@ -459,182 +438,6 @@ function findViewAllReviewsControl(root = document) {
 
 function parseReviewsFromContainer(container) {
   const reviews = [];
-  // Use just [data-review-region] without .review-card class
-  const reviewEls = Array.from(container.querySelectorAll('[data-review-region]'));
-
-  console.log(`[DEBUG] Found ${reviewEls.length} review elements in container`);
-
-  for (const el of reviewEls) {
-    // Get rating from aria-label
-    const ratingEl = el.querySelector('[aria-label*="out of"]');
-    let rating = '';
-    if (ratingEl) {
-      const ariaLabel = ratingEl.getAttribute('aria-label') || '';
-      const match = ariaLabel.match(/(\d+)\s+out of/);
-      rating = match ? match[1] : '';
-    }
-
-    // Get review text - try multiple selectors
-    let reviewText = '';
-    const textEl = el.querySelector('.wt-text-body') || 
-                   el.querySelector('[class*="review-text"]') ||
-                   el.querySelector('p');
-    if (textEl) {
-      reviewText = normalizeSpaces(textEl.textContent);
-    }
-    
-    if (!reviewText || reviewText.length < 5) {
-      console.log('[DEBUG] No valid review text, skipping');
-      continue;
-    }
-
-    // Get reviewer name
-    const reviewerLink = el.querySelector('a[href*="/people/"]');
-    const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
-
-    // Get date
-    const dateEl = el.querySelector('.wt-sem-text-secondary, .wt-text-body-small');
-    const date = dateEl ? (() => {
-      const match = dateEl.textContent.match(DATE_RE);
-      return match ? match[0] : null;
-    })() : null;
-
-    // Check for video/images
-    const hasVideo = el.querySelector('video, [class*="video"]') !== null;
-    
-
-    reviews.push({
-      text: reviewText.slice(0, 500),
-      rating: rating,
-      date,
-      reviewer,
-      hasVideo,
-      hasPhoto
-    });
-  }
-
-  console.log(`[DEBUG] Successfully extracted ${reviews.length} reviews`);
-  return reviews;
-}
-
-// async function expandAndScrapeReviews() {
-//   const reviewsHeading = Array.from(document.querySelectorAll("h2,h3,h4"))
-//     .find(h => /reviews for this item/i.test(h.textContent || ""));
-
-//   const reviewsRoot = reviewsHeading?.closest("section") || reviewsHeading?.closest("div") || document;
-
-//   const ctl = findViewAllReviewsControl(reviewsRoot) || findViewAllReviewsControl(document);
-//   if (!ctl) return { reviews: [], mode: "no_control_found" };
-
-//   // If it's a link, fetch the page
-//   if (ctl.tagName === "A") {
-//     const href = ctl.getAttribute("href");
-//     if (href) {
-//       const url = new URL(href, location.href).toString();
-//       const resp = await fetch(url, { credentials: "include" });
-//       const html = await resp.text();
-//       const doc = new DOMParser().parseFromString(html, "text/html");
-
-//       const h = Array.from(doc.querySelectorAll("h1,h2,h3,h4"))
-//         .find(x => /reviews for this item/i.test(x.textContent || ""));
-//       const root =
-//         h?.closest("section") ||
-//         h?.closest("div") ||
-//         doc.querySelector('[data-region="reviews"]') ||
-//         doc.body;
-
-//       const reviews = parseReviewsFromContainer(root);
-//       return { reviews, mode: "fetched_reviews_page", url };
-//     }
-//   }
-
-//   // It's a button - click it to open dialog
-//   console.log('[DEBUG] Clicking view all reviews button');
-//   ctl.click();
-
-//   // Wait for dialog to appear (increased wait time)
-//   await sleep(2000);
-
-//   // Find the deep-dive-sheet dialog
-//   const dialog = await waitFor(
-//     () => {
-//       const d = document.querySelector('.deep-dive-sheet, [class*="deep-dive"]');
-//       if (!d) return null;
-      
-//       const isVisible = window.getComputedStyle(d).display !== 'none';
-//       return isVisible ? d : null;
-//     },
-//     { timeoutMs: 10000 }
-//   );
-
-//   if (!dialog) {
-//     console.log('[DEBUG] Dialog not found, checking for inline expansion');
-//     const container = document.querySelector('[data-reviews-container]');
-//     if (container) {
-//       const reviews = parseReviewsFromContainer(container);
-//       return { reviews, mode: "clicked_inline" };
-//     }
-//     return { reviews: [], mode: "clicked_but_not_found" };
-//   }
-
-//   console.log('[DEBUG] Dialog opened, collecting reviews from all pages');
-  
-//   // Wait for first batch of reviews to load (increased wait)
-//   await sleep(1500);
-
-//   // Collect reviews from each page
-//   const allReviews = [];
-//   let currentPage = 1;
-//   const maxPages = 20; // Increased limit
-
-//   while (currentPage <= maxPages) {
-//     console.log(`[DEBUG] Extracting reviews from page ${currentPage}`);
-    
-//     // Wait a bit to ensure page is fully loaded
-//     await sleep(500);
-    
-//     // Extract reviews from CURRENT page
-//     const pageReviews = parseReviewsFromContainer(dialog);
-    
-//     console.log(`[DEBUG] Page ${currentPage}: found ${pageReviews.length} reviews`);
-    
-//     // Add to collection with deduplication
-//     pageReviews.forEach(review => {
-//       const isDuplicate = allReviews.some(r => 
-//         r.text === review.text && r.date === review.date && r.reviewer === review.reviewer
-//       );
-//       if (!isDuplicate) {
-//         allReviews.push(review);
-//       }
-//     });
-    
-//     console.log(`[DEBUG] Total unique reviews so far: ${allReviews.length}`);
-
-//     // Look for next page button
-//     currentPage++;
-//     const nextPageBtn = Array.from(dialog.querySelectorAll('button')).find(btn => {
-//       const text = btn.textContent.trim();
-//       return text === String(currentPage);
-//     });
-
-//     if (!nextPageBtn) {
-//       console.log('[DEBUG] No more pagination buttons found');
-//       break;
-//     }
-
-//     // Click next page
-//     console.log(`[DEBUG] Clicking page ${currentPage} button`);
-//     nextPageBtn.click();
-    
-//     // CRITICAL: Wait longer for new page to load (increased from 1200ms to 2000ms)
-//     await sleep(2000);
-//   }
-
-//   console.log(`[DEBUG] Finished! Total reviews collected: ${allReviews.length}`);
-
-//   return { reviews: allReviews, mode: "dialog_paginated" };
-function parseReviewsFromContainer(container) {
-  const reviews = [];
   const reviewEls = Array.from(container.querySelectorAll('[data-review-region]'));
 
   console.log(`[DEBUG] Found ${reviewEls.length} review elements in container`);
@@ -677,7 +480,7 @@ function parseReviewsFromContainer(container) {
     // Check for video
     const hasVideo = el.querySelector('video, [class*="video"]') !== null;
 
-    // Get review images (only actual review photos, not user avatars)
+    // Get review images (user-uploaded review photos - both /iap/ and /iusa/)
     const images = [];
     const imageElements = el.querySelectorAll('img');
     
@@ -688,14 +491,17 @@ function parseReviewsFromContainer(container) {
       const isCircle = img.className.includes('wt-circle');
       const isSmall = img.width < 50;
       
-      // Only include review photos (/iap/), NOT user avatars (/iusa/)
-      if (src && src.includes('/iap/') && !isCircle && !isSmall) {
+      // Include BOTH /iap/ and /iusa/ review photos (excluding small circular avatars)
+      if (src && (src.includes('/iap/') || src.includes('/iusa/')) && !isCircle && !isSmall) {
         // Upgrade to full size by replacing size variants
         const fullSrc = src
           .replace(/iap_75x75\./g, 'iap_fullxfull.')
           .replace(/iap_100x100\./g, 'iap_fullxfull.')
           .replace(/iap_300x300\./g, 'iap_fullxfull.')
-          .replace(/iap_640x640\./g, 'iap_fullxfull.');
+          .replace(/iap_640x640\./g, 'iap_fullxfull.')
+          .replace(/iusa_75x75\./g, 'iusa_fullxfull.')
+          .replace(/iusa_300x300\./g, 'iusa_fullxfull.')
+          .replace(/iusa_640x640\./g, 'iusa_fullxfull.');
         
         images.push(fullSrc);
       }
@@ -869,166 +675,6 @@ async function expandAndScrapeReviews() {
 
   return { reviews: allReviews, mode: "dialog_paginated" };
 }
-// function parseReviewsFromContainer(container) {
-//   const reviews = [];
-//   const reviewEls = Array.from(container.querySelectorAll('[data-review-region]'));
-
-//   console.log(`[DEBUG] Found ${reviewEls.length} review elements in container`);
-
-//   for (const el of reviewEls) {
-//     // Get rating from aria-label
-//     const ratingEl = el.querySelector('[aria-label*="out of"]');
-//     let rating = '';
-//     if (ratingEl) {
-//       const ariaLabel = ratingEl.getAttribute('aria-label') || '';
-//       const match = ariaLabel.match(/(\d+)\s+out of/);
-//       rating = match ? match[1] : '';
-//     }
-
-//     // Get review text
-//     let reviewText = '';
-//     const textEl = el.querySelector('.wt-text-body') || 
-//                    el.querySelector('[class*="review-text"]') ||
-//                    el.querySelector('p');
-//     if (textEl) {
-//       reviewText = normalizeSpaces(textEl.textContent);
-//     }
-    
-//     if (!reviewText || reviewText.length < 5) {
-//       console.log('[DEBUG] No valid review text, skipping');
-//       continue;
-//     }
-
-//     // Get reviewer name
-//     const reviewerLink = el.querySelector('a[href*="/people/"]');
-//     const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
-
-//     // Get date
-//     const dateEl = el.querySelector('.wt-sem-text-secondary, .wt-text-body-small');
-//     const date = dateEl ? (() => {
-//       const match = dateEl.textContent.match(DATE_RE);
-//       return match ? match[0] : null;
-//     })() : null;
-
-//     // Check for video
-//     const hasVideo = el.querySelector('video, [class*="video"]') !== null;
-
-//     // Get review images (only user-uploaded photos, not product photos)
-//     const images = [];
-//     const imageElements = el.querySelectorAll('img');
-    
-//     imageElements.forEach(img => {
-//       let src = img.src || img.getAttribute('data-src');
-      
-    
-      
-//     });
-
-//     // Deduplicate images
-//     const uniqueImages = Array.from(new Set(images));
-
-//     reviews.push({
-//       text: reviewText.slice(0, 500),
-//       rating: rating,
-//       date,
-//       reviewer,
-//       hasVideo,
-//       hasPhoto: uniqueImages.length > 0,
-//       images: uniqueImages
-//     });
-//   }
-
-//   console.log(`[DEBUG] Successfully extracted ${reviews.length} reviews`);
-//   return reviews;
-// }
-function parseReviewsFromContainer(container) {
-  const reviews = [];
-  const reviewEls = Array.from(container.querySelectorAll('[data-review-region]'));
-
-  console.log(`[DEBUG] Found ${reviewEls.length} review elements in container`);
-
-  for (const el of reviewEls) {
-    // Get rating from aria-label
-    const ratingEl = el.querySelector('[aria-label*="out of"]');
-    let rating = '';
-    if (ratingEl) {
-      const ariaLabel = ratingEl.getAttribute('aria-label') || '';
-      const match = ariaLabel.match(/(\d+)\s+out of/);
-      rating = match ? match[1] : '';
-    }
-
-    // Get review text
-    let reviewText = '';
-    const textEl = el.querySelector('.wt-text-body') || 
-                   el.querySelector('[class*="review-text"]') ||
-                   el.querySelector('p');
-    if (textEl) {
-      reviewText = normalizeSpaces(textEl.textContent);
-    }
-    
-    if (!reviewText || reviewText.length < 5) {
-      console.log('[DEBUG] No valid review text, skipping');
-      continue;
-    }
-
-    // Get reviewer name
-    const reviewerLink = el.querySelector('a[href*="/people/"]');
-    const reviewer = reviewerLink ? normalizeSpaces(reviewerLink.textContent) : null;
-
-    // Get date
-    const dateEl = el.querySelector('.wt-sem-text-secondary, .wt-text-body-small');
-    const date = dateEl ? (() => {
-      const match = dateEl.textContent.match(DATE_RE);
-      return match ? match[0] : null;
-    })() : null;
-
-    // Check for video
-    const hasVideo = el.querySelector('video, [class*="video"]') !== null;
-
-    // Get review images (user-uploaded review photos - both /iap/ and /iusa/)
-    const images = [];
-    const imageElements = el.querySelectorAll('img');
-    
-    imageElements.forEach(img => {
-      let src = img.src || img.getAttribute('data-src');
-      
-      // Filter out avatars (circular, small images)
-      const isCircle = img.className.includes('wt-circle');
-      const isSmall = img.width < 50;
-      
-      // Include BOTH /iap/ and /iusa/ review photos (excluding small circular avatars)
-      if (src && (src.includes('/iap/') || src.includes('/iusa/')) && !isCircle && !isSmall) {
-        // Upgrade to full size by replacing size variants
-        const fullSrc = src
-          .replace(/iap_75x75\./g, 'iap_fullxfull.')
-          .replace(/iap_100x100\./g, 'iap_fullxfull.')
-          .replace(/iap_300x300\./g, 'iap_fullxfull.')
-          .replace(/iap_640x640\./g, 'iap_fullxfull.')
-          .replace(/iusa_75x75\./g, 'iusa_fullxfull.')
-          .replace(/iusa_300x300\./g, 'iusa_fullxfull.')
-          .replace(/iusa_640x640\./g, 'iusa_fullxfull.');
-        
-        images.push(fullSrc);
-      }
-    });
-
-    // Deduplicate images
-    const uniqueImages = Array.from(new Set(images));
-
-    reviews.push({
-      text: reviewText.slice(0, 500),
-      rating: rating,
-      date,
-      reviewer,
-      hasVideo,
-      hasPhoto: uniqueImages.length > 0,
-      images: uniqueImages
-    });
-  }
-
-  console.log(`[DEBUG] Successfully extracted ${reviews.length} reviews`);
-  return reviews;
-}
 
 async function getReviewsBestEffort() {
   const listing_id = getListingIdFromUrl();
@@ -1139,5 +785,71 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true;
   }
+  
+  // =====================================================================
+  // ADDED: OPEN_REVIEWS HANDLER
+  // =====================================================================
+  if (msg?.type === "OPEN_REVIEWS") {
+    console.log("[content.js] Opening review window...");
+    
+    // Try to find and click reviews tab
+    const reviewSelectors = [
+      'a[href*="reviews"]',
+      'button[data-review-tab]',
+      '.reviews-tab',
+      'button:contains("Reviews")',
+      '#reviews-tab',
+      '[data-review-tab="true"]',
+      'a[data-review-link]',
+      '[data-review-region] button',
+      '.wt-tab:contains("Reviews")',
+      '[data-appears-component-name*="review_tab"]'
+    ];
+    
+    let opened = false;
+    
+    for (const selector of reviewSelectors) {
+      try {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          el.click();
+          opened = true;
+          console.log(`[content.js] Clicked reviews tab: ${selector}`);
+          break;
+        }
+        if (opened) break;
+      } catch (e) {}
+    }
+    
+    // Fallback: look for any element with "review" text
+    if (!opened) {
+      const allLinks = document.querySelectorAll('a, button, div[role="button"], span[role="button"]');
+      for (const el of allLinks) {
+        const text = el.textContent.toLowerCase();
+        if (text.includes('review') || text.includes('rating') || text.includes('feedback') || text.includes('star')) {
+          try {
+            el.click();
+            opened = true;
+            console.log("[content.js] Clicked element with review text");
+            break;
+          } catch (e) {}
+        }
+      }
+    }
+    
+    // Final fallback: try to scroll to reviews section
+    if (!opened) {
+      const reviewsSection = document.querySelector('#reviews, [data-section="reviews"], .reviews-section');
+      if (reviewsSection) {
+        reviewsSection.scrollIntoView({ behavior: 'smooth' });
+        opened = true;
+        console.log("[content.js] Scrolled to reviews section");
+      }
+    }
+    
+    sendResponse({ opened });
+    return true;
+  }
+  
   return true;
 });
