@@ -6,3 +6,18 @@ button { width: 100%; padding: 10px; cursor: pointer; }
 .score { margin: 10px 0; font-weight: 700; }
 ul { margin: 8px 0 0 18px; padding: 0; }
 pre { max-height: 200px; overflow: auto; background: #f6f6f6; padding: 8px; }
+.ai-result {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.ai-warning {
+  background-color: #ffebee;
+  border-left: 4px solid #f44336;
+}
+
+.ai-safe {
+  background-color: #e8f5e8;
+  border-left: 4px solid #4caf50;
+}
