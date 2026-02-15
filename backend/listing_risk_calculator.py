@@ -71,20 +71,23 @@ class ListingRiskCalculator:
         warnings.extend(ai_warnings)
         breakdown['ai_images'] = ai_risk
         
-        # Cap at 100
-        score = min(100, max(0, score))
+        # Calculate raw score
+        raw_score = score
         
-        # Determine risk level
-        if score < 20:
+        # Cap at 0-100 for display
+        display_score = min(100, max(0, score))
+        
+        # Determine risk level based on display score
+        if display_score < 20:
             level = "VERY LOW"
             color = "#22c55e"
-        elif score < 40:
+        elif display_score < 40:
             level = "LOW"
             color = "#84cc16"
-        elif score < 60:
+        elif display_score < 60:
             level = "MEDIUM"
             color = "#f59e0b"
-        elif score < 80:
+        elif display_score < 80:
             level = "HIGH"
             color = "#ef4444"
         else:
@@ -92,12 +95,13 @@ class ListingRiskCalculator:
             color = "#dc2626"
         
         return {
-            'score': round(score, 1),
+            'score': round(display_score, 1),
+            'raw_score': round(raw_score, 1),  # Include raw score for debugging
             'level': level,
             'color': color,
             'warnings': warnings,
             'breakdown': breakdown,
-            'recommendation': self._get_recommendation(score, warnings)
+            'recommendation': self._get_recommendation(display_score, warnings)
         }
     
     def _analyze_reviews(self, reviews: List[Dict]) -> tuple:
@@ -246,7 +250,10 @@ class ListingRiskCalculator:
             return 0, []
         
         ai_detected = synthid.get('any_ai', False)
-        confidence = synthid.get('results', [{}])[0].get('confidence', 0)
+        
+        # Safely get confidence from results
+        results = synthid.get('results', [])
+        confidence = results[0].get('confidence', 0) if results and len(results) > 0 else 0
         
         if not ai_detected:
             return 0, []
