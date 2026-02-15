@@ -29,10 +29,17 @@ A browser extension that protects buyers from AI-generated product scams on Etsy
 
 1. Install latest version of Python from https://www.python.org/downloads/
 
-2. You will need to use PIP to install the dependencies for the backend, you can open a terminal window and install these using this command: 
+2. Create a virtual environment (recommended)
 
-```pip install Flask, Flask-CORS, google-generativeai, python-dotenv, requesets, Pillow, textblob```
+```python -m venv venv```
 
+Activate it:
+
+```venv\Scripts\activate```
+
+3. Install dependencies using pip
+
+```pip install -r requirements.txt```
 
 ### Starting the backend
 
